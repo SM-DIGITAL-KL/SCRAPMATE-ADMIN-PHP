@@ -59,6 +59,10 @@ create-env-on-server.sh
 *.sql
 env.txt
 
+# Scripts and documentation
+*.sh
+*.md
+
 # Temporary files
 *.log
 *.tmp
