@@ -1,0 +1,67 @@
+/node_modules
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.backup
+.env.production
+.env.bak
+*.pem
+*.key
+*.p12
+*.crt
+
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+
+# Laravel specific
+/bootstrap/cache/*
+!/bootstrap/cache/.gitignore
+/storage/framework/cache/*
+!/storage/framework/cache/.gitignore
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+/storage/logs/*
+!/storage/logs/.gitignore
+
+# Sensitive files
+/storage/firebase/*.json
+scrapmate-admin.pem
+*.pem
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Scripts that contain sensitive info
+deploy.sh
+remove-ec2-code.sh
+fix-server-env.sh
+push-env.sh
+create-env-on-server.sh
+
+# SQL dumps (too large)
+*.sql
+env.txt
+
+# Temporary files
+*.log
+*.tmp
+*.swp
+*~
+

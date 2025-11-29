@@ -1,0 +1,11 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class AdminProfile extends Model
+{
+    protected $table = 'admin_profile';
+    protected $fillable = ['name', 'email', 'contact', 'address', 'location'];
+}

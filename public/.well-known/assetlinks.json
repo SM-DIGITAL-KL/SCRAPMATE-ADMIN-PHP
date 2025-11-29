@@ -1,0 +1,16 @@
+[
+  {
+      "relation": [
+          "delegate_permission/common.handle_all_urls",
+          "delegate_permission/common.get_login_creds"
+      ],
+      "target": {
+          "namespace": "android_app",
+          "package_name": "com.alpts.scrapmate",
+          "sha256_cert_fingerprints": [
+              "56:6E:4A:92:5C:94:44:EB:5A:98:63:22:A0:A1:55:3D:65:35:75:31:CD:21:C8:9B:35:BC:29:86:4A:AE:BA:81",
+              "24:BD:0C:60:C6:9A:86:2A:F1:F6:C0:E7:54:87:B7:63:5E:84:5A:52:B3:55:A9:90:62:3B:EC:72:B0:84:38:FC"
+          ]
+      }
+  }
+]

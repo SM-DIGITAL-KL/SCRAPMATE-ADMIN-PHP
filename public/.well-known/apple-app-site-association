@@ -1,0 +1,11 @@
+{
+    "applinks": {
+      "apps": [],
+      "details": [
+        {
+          "appID": "PH2JC6565K.com.alpts.scrapmate",
+          "paths": ["/verifyYourNumberPage/*"]
+        }
+      ]
+    }
+  }

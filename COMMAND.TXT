@@ -1,0 +1,5 @@
+# Make sure www-data (Nginx user) owns storage & bootstrap/cache
+sudo chown -R www-data:www-data /var/www/scrapmate-admin/storage /var/www/scrapmate-admin/bootstrap/cache
+
+# Give read/write/execute permissions for owner & group
+sudo chmod -R 775 /var/www/scrapmate-admin/storage /var/www/scrapmate-admin/bootstrap/cache
