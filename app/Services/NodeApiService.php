@@ -17,9 +17,9 @@ class NodeApiService
     public function __construct()
     {
         // Read from env.txt first, fallback to .env, then env() helper
-        // NODE_URL should be the base server URL (e.g., http://localhost:3000)
+        // NODE_URL should be the base server URL (monolithic Lambda function URL)
         // We append /api to it for API endpoints
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
         $this->baseUrl = rtrim($nodeUrl, '/') . '/api';
         $this->apiKey = EnvReader::get('NODE_API_KEY', env('NODE_API_KEY', 'your-api-key-here'));
         $this->cacheEnabled = EnvReader::get('API_CACHE_ENABLED', env('API_CACHE_ENABLED', true));

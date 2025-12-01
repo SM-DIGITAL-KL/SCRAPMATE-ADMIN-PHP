@@ -561,7 +561,7 @@ class AdminController extends Controller
     {
         Log::info('🔵 AdminController::set_permission called', ['id' => $id]);
         $endpoint = '/admin/set_permission' . ($id ? '/' . $id : '');
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
         $nodeApiUrl = rtrim($nodeUrl, '/') . '/api';
         $fullUrl = $nodeApiUrl . $endpoint;
         Log::info('🔵 Calling Node.js API', [
