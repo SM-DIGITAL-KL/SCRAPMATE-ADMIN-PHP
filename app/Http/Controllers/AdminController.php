@@ -379,6 +379,78 @@ class AdminController extends Controller
         }
     }
 
+    public function b2cUsers(Request $request)
+    {
+        // Reduced logging for performance
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 10);
+        $search = $request->get('search', '');
+        
+        $params = [
+            'page' => $page,
+            'limit' => $limit
+        ];
+        
+        if (!empty($search)) {
+            $params['search'] = $search;
+        }
+        
+        $apiResponse = $this->nodeApi->get('/admin/b2c-users', $params);
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $data = $apiResponse['data'];
+            // Convert users array to collection of objects
+            if (isset($data['users']) && is_array($data['users'])) {
+                $data['users'] = collect($data['users'])->map(function($user) {
+                    return (object)$user;
+                });
+            } else {
+                $data['users'] = collect([]);
+            }
+            
+            $data['pagename'] = 'B2C Users';
+            return view('admin/b2cUsers', $data);
+        } else {
+            Log::error('Node API failed for b2cUsers', ['response' => $apiResponse]);
+            $data = [
+                'pagename' => 'B2C Users',
+                'users' => collect([]),
+                'total' => 0,
+                'page' => 1,
+                'limit' => 10,
+                'totalPages' => 0,
+                'hasMore' => false
+            ];
+            return view('admin/b2cUsers', $data);
+        }
+    }
+
+    public function viewB2CUserDocuments(Request $request, $userId)
+    {
+        Log::info('AdminController::viewB2CUserDocuments called', ['userId' => $userId]);
+        
+        $apiResponse = $this->nodeApi->get("/admin/b2c-users/{$userId}");
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $userDataArray = $apiResponse['data'];
+            
+            // Convert to object and ensure shop is also an object
+            $userData = (object)$userDataArray;
+            if (isset($userDataArray['shop']) && is_array($userDataArray['shop'])) {
+                $userData->shop = (object)$userDataArray['shop'];
+            }
+            
+            $data = [
+                'pagename' => 'B2C User Details',
+                'user' => $userData
+            ];
+            return view('admin/b2cUserDocuments', $data);
+        } else {
+            Log::error('Node API failed for viewB2CUserDocuments', ['response' => $apiResponse]);
+            return redirect()->route('b2cUsers')->with('error', 'Failed to load user details');
+        }
+    }
+
     public function viewB2BUserDocuments(Request $request, $userId)
     {
         Log::info('AdminController::viewB2BUserDocuments called', ['userId' => $userId]);
@@ -419,13 +491,106 @@ class AdminController extends Controller
         }
         
         $apiResponse = $this->nodeApi->post("/admin/b2b-users/{$userId}/approval-status", [
-            'approval_status' => $approvalStatus
+            'approval_status' => $approvalStatus,
+            'rejection_reason' => $request->input('rejection_reason', '')
         ]);
         
         if ($apiResponse['status'] === 'success') {
             return redirect()->back()->with('success', "B2B approval status updated to {$approvalStatus}");
         } else {
             Log::error('Node API failed for updateB2BApprovalStatus', ['response' => $apiResponse]);
+            return redirect()->back()->with('error', 'Failed to update approval status');
+        }
+    }
+
+    public function updateB2CApprovalStatus(Request $request, $userId)
+    {
+        Log::info('AdminController::updateB2CApprovalStatus called', [
+            'userId' => $userId,
+            'approval_status' => $request->input('approval_status'),
+            'rejection_reason' => $request->input('rejection_reason')
+        ]);
+        
+        $approvalStatus = $request->input('approval_status');
+        
+        if (!in_array($approvalStatus, ['approved', 'rejected', 'pending'])) {
+            return redirect()->back()->with('error', 'Invalid approval status');
+        }
+        
+        $apiData = [
+            'approval_status' => $approvalStatus
+        ];
+        
+        // Add rejection reason if status is rejected
+        if ($approvalStatus === 'rejected' && $request->has('rejection_reason')) {
+            $apiData['rejection_reason'] = $request->input('rejection_reason');
+        }
+        
+        $apiResponse = $this->nodeApi->post("/admin/b2c-users/{$userId}/approval-status", $apiData);
+        
+        if ($apiResponse['status'] === 'success') {
+            return redirect()->back()->with('success', "B2C approval status updated to {$approvalStatus}");
+        } else {
+            Log::error('Node API failed for updateB2CApprovalStatus', ['response' => $apiResponse]);
+            return redirect()->back()->with('error', 'Failed to update approval status');
+        }
+    }
+
+    public function viewDeliveryUserDocuments(Request $request, $userId)
+    {
+        Log::info('AdminController::viewDeliveryUserDocuments called', ['userId' => $userId]);
+        
+        $apiResponse = $this->nodeApi->get("/admin/delivery-users/{$userId}");
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $userDataArray = $apiResponse['data'];
+            
+            // Convert to object and ensure delivery_boy is also an object
+            $userData = (object)$userDataArray;
+            if (isset($userDataArray['delivery_boy']) && is_array($userDataArray['delivery_boy'])) {
+                $userData->delivery_boy = (object)$userDataArray['delivery_boy'];
+            }
+            
+            $data = [
+                'pagename' => 'Delivery User Documents',
+                'user' => $userData
+            ];
+            return view('admin/deliveryUserDocuments', $data);
+        } else {
+            Log::error('Node API failed for viewDeliveryUserDocuments', ['response' => $apiResponse]);
+            return redirect()->route('users')->with('error', 'Failed to load user documents');
+        }
+    }
+
+    public function updateDeliveryApprovalStatus(Request $request, $userId)
+    {
+        Log::info('AdminController::updateDeliveryApprovalStatus called', [
+            'userId' => $userId,
+            'approval_status' => $request->input('approval_status'),
+            'rejection_reason' => $request->input('rejection_reason')
+        ]);
+        
+        $approvalStatus = $request->input('approval_status');
+        
+        if (!in_array($approvalStatus, ['approved', 'rejected', 'pending'])) {
+            return redirect()->back()->with('error', 'Invalid approval status');
+        }
+        
+        $apiData = [
+            'approval_status' => $approvalStatus
+        ];
+        
+        // Add rejection reason if status is rejected
+        if ($approvalStatus === 'rejected' && $request->has('rejection_reason')) {
+            $apiData['rejection_reason'] = $request->input('rejection_reason');
+        }
+        
+        $apiResponse = $this->nodeApi->post("/admin/delivery-users/{$userId}/approval-status", $apiData);
+        
+        if ($apiResponse['status'] === 'success') {
+            return redirect()->back()->with('success', "Delivery approval status updated to {$approvalStatus}");
+        } else {
+            Log::error('Node API failed for updateDeliveryApprovalStatus', ['response' => $apiResponse]);
             return redirect()->back()->with('error', 'Failed to update approval status');
         }
     }
@@ -561,7 +726,10 @@ class AdminController extends Controller
     {
         Log::info('🔵 AdminController::set_permission called', ['id' => $id]);
         $endpoint = '/admin/set_permission' . ($id ? '/' . $id : '');
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+        // Using localhost:3000 for local development
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+        // Server URL (commented out for local development):
+        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
         $nodeApiUrl = rtrim($nodeUrl, '/') . '/api';
         $fullUrl = $nodeApiUrl . $endpoint;
         Log::info('🔵 Calling Node.js API', [

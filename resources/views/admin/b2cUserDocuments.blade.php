@@ -9,9 +9,9 @@
                     <div class="card-body">
                         @include('layouts.flashmessage')
                         <div class="d-flex justify-content-between align-items-center mb-4">
-                            <h4 class="card-title" style="color: #000; font-weight: 600; font-size: 1.5rem;">B2B User Documents</h4>
-                            <a href="{{ route('b2bUsers') }}" class="btn btn-secondary btn-sm" style="font-weight: 500;">
-                                <i class="fa fa-arrow-left"></i> Back to B2B Users
+                            <h4 class="card-title" style="color: #000; font-weight: 600; font-size: 1.5rem;">B2C User Details</h4>
+                            <a href="{{ route('b2cUsers') }}" class="btn btn-secondary btn-sm" style="font-weight: 500;">
+                                <i class="fa fa-arrow-left"></i> Back to B2C Users
                             </a>
                         </div>
                         <hr>
@@ -59,39 +59,21 @@
                             </div>
 
                             @if(isset($user->shop) && $user->shop)
-                                <!-- Company Information -->
+                                <!-- Address Information -->
                                 <div class="row mb-4">
                                     <div class="col-md-12">
                                         <div class="card" style="border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                             <div class="card-body" style="padding: 25px;">
-                                                <h5 class="card-title mb-4" style="color: #333; font-weight: 600; font-size: 1.25rem; border-bottom: 2px solid #6c5ce7; padding-bottom: 10px;">Company Information</h5>
+                                                <h5 class="card-title mb-4" style="color: #333; font-weight: 600; font-size: 1.25rem; border-bottom: 2px solid #6c5ce7; padding-bottom: 10px;">Address Information</h5>
                                                 <div class="row">
                                                     <div class="col-md-6">
                                                         <p class="mb-3" style="color: #000; font-size: 15px; line-height: 1.8;">
-                                                            <strong style="color: #000; font-weight: 600; min-width: 140px; display: inline-block;">Company Name:</strong> 
-                                                            <span style="color: #000; font-weight: 400;">{{ $user->shop->company_name ?? 'N/A' }}</span>
-                                                        </p>
-                                                        <p class="mb-3" style="color: #000; font-size: 15px; line-height: 1.8;">
-                                                            <strong style="color: #000; font-weight: 600; min-width: 140px; display: inline-block;">GST Number:</strong> 
-                                                            <span style="color: #000; font-weight: 400;">{{ $user->shop->gst_number ?? 'N/A' }}</span>
-                                                        </p>
-                                                        <p class="mb-3" style="color: #000; font-size: 15px; line-height: 1.8;">
-                                                            <strong style="color: #000; font-weight: 600; min-width: 140px; display: inline-block;">PAN Number:</strong> 
-                                                            <span style="color: #000; font-weight: 400;">{{ $user->shop->pan_number ?? 'N/A' }}</span>
-                                                        </p>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <p class="mb-3" style="color: #000; font-size: 15px; line-height: 1.8;">
-                                                            <strong style="color: #000; font-weight: 600; min-width: 140px; display: inline-block;">Shop Name:</strong> 
-                                                            <span style="color: #000; font-weight: 400;">{{ $user->shop->shopname ?? 'N/A' }}</span>
-                                                        </p>
-                                                        <p class="mb-3" style="color: #000; font-size: 15px; line-height: 1.8;">
-                                                            <strong style="color: #000; font-weight: 600; min-width: 140px; display: inline-block;">Owner Name:</strong> 
-                                                            <span style="color: #000; font-weight: 400;">{{ $user->shop->ownername ?? 'N/A' }}</span>
-                                                        </p>
-                                                        <p class="mb-3" style="color: #000; font-size: 15px; line-height: 1.8;">
                                                             <strong style="color: #000; font-weight: 600; min-width: 140px; display: inline-block;">Address:</strong> 
                                                             <span style="color: #000; font-weight: 400;">{{ $user->shop->address ?? 'N/A' }}</span>
+                                                        </p>
+                                                        <p class="mb-3" style="color: #000; font-size: 15px; line-height: 1.8;">
+                                                            <strong style="color: #000; font-weight: 600; min-width: 140px; display: inline-block;">Contact Number:</strong> 
+                                                            <span style="color: #000; font-weight: 400;">{{ $user->shop->contact ?? 'N/A' }}</span>
                                                         </p>
                                                     </div>
                                                 </div>
@@ -131,21 +113,21 @@
                                                 @endif
 
                                                 <!-- Approval Actions -->
-                                                <form id="approvalFormB2B" action="{{ route('updateB2BApprovalStatus', ['userId' => $user->id]) }}" method="POST" class="d-inline">
+                                                <form id="approvalForm" action="{{ route('updateB2CApprovalStatus', ['userId' => $user->id]) }}" method="POST" class="d-inline">
                                                     @csrf
-                                                    <input type="hidden" name="approval_status" id="approval_status_input_b2b" value="">
-                                                    <input type="hidden" name="rejection_reason" id="rejection_reason_input_b2b" value="">
+                                                    <input type="hidden" name="approval_status" id="approval_status_input" value="">
+                                                    <input type="hidden" name="rejection_reason" id="rejection_reason_input" value="">
                                                     <div class="btn-group" role="group">
                                                         <button type="button" class="btn btn-success" 
-                                                                onclick="submitApprovalB2B('approved')">
+                                                                onclick="submitApproval('approved')">
                                                             <i class="fa fa-check"></i> Approve
                                                         </button>
                                                         <button type="button" class="btn btn-danger"
-                                                                onclick="showRejectionModalB2B()">
+                                                                onclick="showRejectionModal()">
                                                             <i class="fa fa-times"></i> Reject
                                                         </button>
                                                         <button type="button" class="btn btn-warning"
-                                                                onclick="submitApprovalB2B('pending')">
+                                                                onclick="submitApproval('pending')">
                                                             <i class="fa fa-clock"></i> Set Pending
                                                         </button>
                                                     </div>
@@ -163,21 +145,21 @@
                                                 <h5 class="card-title mb-4" style="color: #333; font-weight: 600; font-size: 1.25rem; border-bottom: 2px solid #6c5ce7; padding-bottom: 10px;">Uploaded Documents</h5>
                                                 
                                                 <div class="row">
-                                                    <!-- Business License -->
+                                                    <!-- Aadhar Card -->
                                                     <div class="col-md-6 mb-3">
                                                         <div class="card" style="border: 1px solid #e0e0e0;">
                                                             <div class="card-body" style="padding: 20px;">
-                                                                <h6 class="card-subtitle mb-3" style="color: #000; font-weight: 600; font-size: 16px;">Business License</h6>
-                                                                @if(!empty($user->shop->business_license_url))
+                                                                <h6 class="card-subtitle mb-3" style="color: #000; font-weight: 600; font-size: 16px;">Aadhar Card</h6>
+                                                                @if(!empty($user->shop->aadhar_card))
                                                                     <div class="mb-2">
-                                                                        <a href="{{ $user->shop->business_license_url }}" target="_blank" class="btn btn-primary btn-sm me-2">
+                                                                        <a href="{{ $user->shop->aadhar_card }}" target="_blank" class="btn btn-primary btn-sm me-2">
                                                                             <i class="fa fa-file-pdf"></i> Open in New Tab
                                                                         </a>
-                                                                        <a href="https://docs.google.com/viewer?url={{ urlencode($user->shop->business_license_url) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
+                                                                        <a href="https://docs.google.com/viewer?url={{ urlencode($user->shop->aadhar_card) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
                                                                             <i class="fa fa-eye"></i> View with Google Viewer
                                                                         </a>
                                                                     </div>
-                                                                    <iframe src="https://docs.google.com/viewer?url={{ urlencode($user->shop->business_license_url) }}&embedded=true" 
+                                                                    <iframe src="https://docs.google.com/viewer?url={{ urlencode($user->shop->aadhar_card) }}&embedded=true" 
                                                                             style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd;" 
                                                                             frameborder="0"></iframe>
                                                                 @else
@@ -187,69 +169,21 @@
                                                         </div>
                                                     </div>
 
-                                                    <!-- GST Certificate -->
+                                                    <!-- Driving License -->
                                                     <div class="col-md-6 mb-3">
                                                         <div class="card" style="border: 1px solid #e0e0e0;">
                                                             <div class="card-body" style="padding: 20px;">
-                                                                <h6 class="card-subtitle mb-3" style="color: #000; font-weight: 600; font-size: 16px;">GST Certificate</h6>
-                                                                @if(!empty($user->shop->gst_certificate_url))
+                                                                <h6 class="card-subtitle mb-3" style="color: #000; font-weight: 600; font-size: 16px;">Driving License</h6>
+                                                                @if(!empty($user->shop->driving_license))
                                                                     <div class="mb-2">
-                                                                        <a href="{{ $user->shop->gst_certificate_url }}" target="_blank" class="btn btn-primary btn-sm me-2">
+                                                                        <a href="{{ $user->shop->driving_license }}" target="_blank" class="btn btn-primary btn-sm me-2">
                                                                             <i class="fa fa-file-pdf"></i> Open in New Tab
                                                                         </a>
-                                                                        <a href="https://docs.google.com/viewer?url={{ urlencode($user->shop->gst_certificate_url) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
+                                                                        <a href="https://docs.google.com/viewer?url={{ urlencode($user->shop->driving_license) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
                                                                             <i class="fa fa-eye"></i> View with Google Viewer
                                                                         </a>
                                                                     </div>
-                                                                    <iframe src="https://docs.google.com/viewer?url={{ urlencode($user->shop->gst_certificate_url) }}&embedded=true" 
-                                                                            style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd;" 
-                                                                            frameborder="0"></iframe>
-                                                                @else
-                                                                    <p style="color: #666; font-size: 14px;">No document uploaded</p>
-                                                                @endif
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Address Proof -->
-                                                    <div class="col-md-6 mb-3">
-                                                        <div class="card" style="border: 1px solid #e0e0e0;">
-                                                            <div class="card-body" style="padding: 20px;">
-                                                                <h6 class="card-subtitle mb-3" style="color: #000; font-weight: 600; font-size: 16px;">Business Address Proof</h6>
-                                                                @if(!empty($user->shop->address_proof_url))
-                                                                    <div class="mb-2">
-                                                                        <a href="{{ $user->shop->address_proof_url }}" target="_blank" class="btn btn-primary btn-sm me-2">
-                                                                            <i class="fa fa-file-pdf"></i> Open in New Tab
-                                                                        </a>
-                                                                        <a href="https://docs.google.com/viewer?url={{ urlencode($user->shop->address_proof_url) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
-                                                                            <i class="fa fa-eye"></i> View with Google Viewer
-                                                                        </a>
-                                                                    </div>
-                                                                    <iframe src="https://docs.google.com/viewer?url={{ urlencode($user->shop->address_proof_url) }}&embedded=true" 
-                                                                            style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd;" 
-                                                                            frameborder="0"></iframe>
-                                                                @else
-                                                                    <p style="color: #666; font-size: 14px;">No document uploaded</p>
-                                                                @endif
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- KYC of Owner -->
-                                                    <div class="col-md-6 mb-3">
-                                                        <div class="card" style="border: 1px solid #e0e0e0;">
-                                                            <div class="card-body" style="padding: 20px;">
-                                                                <h6 class="card-subtitle mb-3" style="color: #000; font-weight: 600; font-size: 16px;">KYC of Owner</h6>
-                                                                @if(!empty($user->shop->kyc_owner_url))
-                                                                    <div class="mb-2">
-                                                                        <a href="{{ $user->shop->kyc_owner_url }}" target="_blank" class="btn btn-primary btn-sm me-2">
-                                                                            <i class="fa fa-file-pdf"></i> Open in New Tab
-                                                                        </a>
-                                                                        <a href="https://docs.google.com/viewer?url={{ urlencode($user->shop->kyc_owner_url) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
-                                                                            <i class="fa fa-eye"></i> View with Google Viewer
-                                                                        </a>
-                                                                    </div>
-                                                                    <iframe src="https://docs.google.com/viewer?url={{ urlencode($user->shop->kyc_owner_url) }}&embedded=true" 
+                                                                    <iframe src="https://docs.google.com/viewer?url={{ urlencode($user->shop->driving_license) }}&embedded=true" 
                                                                             style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd;" 
                                                                             frameborder="0"></iframe>
                                                                 @else
@@ -280,111 +214,111 @@
     </div>
 </div>
 
-<!-- Rejection Reason Modal for B2B -->
-<div class="modal fade" id="rejectionModalB2B" tabindex="-1" aria-labelledby="rejectionModalB2BLabel" aria-hidden="true">
+<!-- Rejection Reason Modal -->
+<div class="modal fade" id="rejectionModal" tabindex="-1" aria-labelledby="rejectionModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="rejectionModalB2BLabel">Select Rejection Reason</h5>
+                <h5 class="modal-title" id="rejectionModalLabel">Select Rejection Reason</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label">Please select a reason for rejection:</label>
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="rejection_reason_b2b" id="reasonB2B1" value="Business certificate not proper">
-                        <label class="form-check-label" for="reasonB2B1">
-                            Business certificate not proper
+                        <input class="form-check-input" type="radio" name="rejection_reason" id="reason1" value="Aadhar card not proper">
+                        <label class="form-check-label" for="reason1">
+                            Aadhar card not proper
                         </label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="rejection_reason_b2b" id="reasonB2B2" value="GST certificate not proper">
-                        <label class="form-check-label" for="reasonB2B2">
-                            GST certificate not proper
+                        <input class="form-check-input" type="radio" name="rejection_reason" id="reason2" value="Contact address not proper">
+                        <label class="form-check-label" for="reason2">
+                            Contact address not proper
                         </label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="rejection_reason_b2b" id="reasonB2B3" value="Address proof not proper">
-                        <label class="form-check-label" for="reasonB2B3">
-                            Address proof not proper
+                        <input class="form-check-input" type="radio" name="rejection_reason" id="reason3" value="Email not proper">
+                        <label class="form-check-label" for="reason3">
+                            Email not proper
                         </label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="rejection_reason_b2b" id="reasonB2B4" value="KYC owner document not proper">
-                        <label class="form-check-label" for="reasonB2B4">
-                            KYC owner document not proper
+                        <input class="form-check-input" type="radio" name="rejection_reason" id="reason4" value="Driving license not proper">
+                        <label class="form-check-label" for="reason4">
+                            Driving license not proper
                         </label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="rejection_reason_b2b" id="reasonB2B5" value="Company information mismatch">
-                        <label class="form-check-label" for="reasonB2B5">
-                            Company information mismatch
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="rejection_reason_b2b" id="reasonB2B6" value="Documents are unclear or incomplete">
-                        <label class="form-check-label" for="reasonB2B6">
+                        <input class="form-check-input" type="radio" name="rejection_reason" id="reason5" value="Documents are unclear or incomplete">
+                        <label class="form-check-label" for="reason5">
                             Documents are unclear or incomplete
                         </label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="rejection_reason_b2b" id="reasonB2B7" value="Other">
-                        <label class="form-check-label" for="reasonB2B7">
+                        <input class="form-check-input" type="radio" name="rejection_reason" id="reason6" value="Information mismatch in documents">
+                        <label class="form-check-label" for="reason6">
+                            Information mismatch in documents
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="rejection_reason" id="reason7" value="Other">
+                        <label class="form-check-label" for="reason7">
                             Other
                         </label>
                     </div>
                 </div>
-                <div class="mb-3" id="otherReasonDivB2B" style="display: none;">
-                    <label for="otherReasonB2B" class="form-label">Please specify:</label>
-                    <textarea class="form-control" id="otherReasonB2B" rows="3" placeholder="Enter rejection reason"></textarea>
+                <div class="mb-3" id="otherReasonDiv" style="display: none;">
+                    <label for="otherReason" class="form-label">Please specify:</label>
+                    <textarea class="form-control" id="otherReason" rows="3" placeholder="Enter rejection reason"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" onclick="confirmRejectionB2B()">Confirm Rejection</button>
+                <button type="button" class="btn btn-danger" onclick="confirmRejection()">Confirm Rejection</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-function submitApprovalB2B(status) {
-    if (status === 'approved' && !confirm('Are you sure you want to approve this B2B user?')) {
+function submitApproval(status) {
+    if (status === 'approved' && !confirm('Are you sure you want to approve this B2C user?')) {
         return;
     }
     if (status === 'pending' && !confirm('Are you sure you want to set status to pending?')) {
         return;
     }
     
-    document.getElementById('approval_status_input_b2b').value = status;
-    document.getElementById('rejection_reason_input_b2b').value = '';
-    document.getElementById('approvalFormB2B').submit();
+    document.getElementById('approval_status_input').value = status;
+    document.getElementById('rejection_reason_input').value = '';
+    document.getElementById('approvalForm').submit();
 }
 
-function showRejectionModalB2B() {
+function showRejectionModal() {
     // Reset form
-    document.querySelectorAll('input[name="rejection_reason_b2b"]').forEach(radio => {
+    document.querySelectorAll('input[name="rejection_reason"]').forEach(radio => {
         radio.checked = false;
     });
-    document.getElementById('otherReasonB2B').value = '';
-    document.getElementById('otherReasonDivB2B').style.display = 'none';
+    document.getElementById('otherReason').value = '';
+    document.getElementById('otherReasonDiv').style.display = 'none';
     
     // Show modal
-    var modal = new bootstrap.Modal(document.getElementById('rejectionModalB2B'));
+    var modal = new bootstrap.Modal(document.getElementById('rejectionModal'));
     modal.show();
     
     // Show other reason textarea if "Other" is selected
-    document.getElementById('reasonB2B7').addEventListener('change', function() {
+    document.getElementById('reason7').addEventListener('change', function() {
         if (this.checked) {
-            document.getElementById('otherReasonDivB2B').style.display = 'block';
+            document.getElementById('otherReasonDiv').style.display = 'block';
         } else {
-            document.getElementById('otherReasonDivB2B').style.display = 'none';
+            document.getElementById('otherReasonDiv').style.display = 'none';
         }
     });
 }
 
-function confirmRejectionB2B() {
-    var selectedReason = document.querySelector('input[name="rejection_reason_b2b"]:checked');
+function confirmRejection() {
+    var selectedReason = document.querySelector('input[name="rejection_reason"]:checked');
     
     if (!selectedReason) {
         alert('Please select a rejection reason');
@@ -394,7 +328,7 @@ function confirmRejectionB2B() {
     var rejectionReason = selectedReason.value;
     
     if (rejectionReason === 'Other') {
-        var otherReason = document.getElementById('otherReasonB2B').value.trim();
+        var otherReason = document.getElementById('otherReason').value.trim();
         if (!otherReason) {
             alert('Please specify the rejection reason');
             return;
@@ -402,13 +336,13 @@ function confirmRejectionB2B() {
         rejectionReason = otherReason;
     }
     
-    if (!confirm('Are you sure you want to reject this B2B user with reason: ' + rejectionReason + '?')) {
+    if (!confirm('Are you sure you want to reject this B2C user with reason: ' + rejectionReason + '?')) {
         return;
     }
     
-    document.getElementById('approval_status_input_b2b').value = 'rejected';
-    document.getElementById('rejection_reason_input_b2b').value = rejectionReason;
-    document.getElementById('approvalFormB2B').submit();
+    document.getElementById('approval_status_input').value = 'rejected';
+    document.getElementById('rejection_reason_input').value = rejectionReason;
+    document.getElementById('approvalForm').submit();
 }
 </script>
 

@@ -38,6 +38,11 @@ Route::get('/users', [AdminController::class, 'users'])->name('users')->middlewa
 Route::get('/b2b-users', [AdminController::class, 'b2bUsers'])->name('b2bUsers')->middleware('authusers');
 Route::get('/b2b-users/{userId}/documents', [AdminController::class, 'viewB2BUserDocuments'])->name('b2bUserDocuments')->middleware('authusers');
 Route::post('/b2b-users/{userId}/approval-status', [AdminController::class, 'updateB2BApprovalStatus'])->name('updateB2BApprovalStatus')->middleware('authusers');
+Route::get('/b2c-users', [AdminController::class, 'b2cUsers'])->name('b2cUsers')->middleware('authusers');
+Route::get('/b2c-users/{userId}/documents', [AdminController::class, 'viewB2CUserDocuments'])->name('b2cUserDocuments')->middleware('authusers');
+Route::post('/b2c-users/{userId}/approval-status', [AdminController::class, 'updateB2CApprovalStatus'])->name('updateB2CApprovalStatus')->middleware('authusers');
+Route::get('/delivery-users/{userId}/documents', [AdminController::class, 'viewDeliveryUserDocuments'])->name('deliveryUserDocuments')->middleware('authusers');
+Route::post('/delivery-users/{userId}/approval-status', [AdminController::class, 'updateDeliveryApprovalStatus'])->name('updateDeliveryApprovalStatus')->middleware('authusers');
 Route::get('/subPackages', [AdminController::class, 'subscriptionPackages'])->name('subscriptionPackages')->middleware('authusers');
 Route::post('/subPackages/{id}', [AdminController::class, 'updateSubscriptionPackage'])->name('updateSubscriptionPackage')->middleware('authusers');
 Route::delete('/subPackages/{id}', [AdminController::class, 'updateSubscriptionPackage'])->name('deleteSubscriptionPackage')->middleware('authusers');

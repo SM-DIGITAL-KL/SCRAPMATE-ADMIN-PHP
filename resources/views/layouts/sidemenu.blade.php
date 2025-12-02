@@ -48,6 +48,7 @@
             <ul aria-expanded="false">
                 <li><a href="{{ route('agents') }}">Vendor Manage</a></li>
                 <li><a href="{{ route('b2bUsers') }}">B2B Manage</a></li>
+                <li><a href="{{ route('b2cUsers') }}">B2C Manage</a></li>
                 {{-- <li><a href="{{ route('agents_leads') }}">Leads Manage</a></li> --}}
                 {{-- <li><a href="{{ route('commission_track') }}">Commission Tracking</a></li> --}}
                 {{-- <li><a href="{{ route('agent_report') }}">Agent Report</a></li> --}}
