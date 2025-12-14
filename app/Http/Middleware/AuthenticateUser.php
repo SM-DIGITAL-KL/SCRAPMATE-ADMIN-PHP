@@ -20,7 +20,7 @@ class AuthenticateUser
     {
         // Check if user is logged in via session (from Node.js API)
         if (!session()->has('user_id')) {
-            return redirect('/');
+            return redirect('/login');
         }
 
         return $next($request);

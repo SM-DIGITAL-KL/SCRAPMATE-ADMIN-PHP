@@ -17,12 +17,10 @@ class NodeApiService
     public function __construct()
     {
         // Read from env.txt first, fallback to .env, then env() helper
-        // NODE_URL should be the base server URL (monolithic Lambda function URL)
+        // NODE_URL should be the base server URL (AWS Lambda Function URL)
         // We append /api to it for API endpoints
-        // Using localhost:3000 for local development
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
-        // Server URL (commented out for local development):
-        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+        // Default to production Lambda Function URL if not configured
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
         $this->baseUrl = rtrim($nodeUrl, '/') . '/api';
         $this->apiKey = EnvReader::get('NODE_API_KEY', env('NODE_API_KEY', 'your-api-key-here'));
         $this->cacheEnabled = EnvReader::get('API_CACHE_ENABLED', env('API_CACHE_ENABLED', true));
@@ -46,6 +44,7 @@ class NodeApiService
     
     /**
      * Clear cache for a specific endpoint pattern
+     * This clears both PHP cache and Node.js Redis cache
      */
     public function clearCache($endpointPattern = null)
     {
@@ -53,15 +52,84 @@ class NodeApiService
             return;
         }
         
+        // Clear PHP cache first
         if ($endpointPattern) {
-            // Clear cache for specific endpoint pattern
+            // Clear PHP cache for specific endpoint pattern
             $pattern = 'node_api:' . md5($endpointPattern);
-            Cache::flush(); // Note: This clears all cache. For production, consider using cache tags if available
-            Log::info('Cache cleared for pattern', ['pattern' => $endpointPattern]);
-        } else {
-            // Clear all API cache
+            Cache::forget($pattern);
+            
+            // Also clear all PHP cache to be safe (for now)
             Cache::flush();
-            Log::info('All API cache cleared');
+            
+            Log::info('PHP cache cleared for pattern', ['pattern' => $endpointPattern]);
+        } else {
+            // Clear all PHP API cache
+            Cache::flush();
+            Log::info('All PHP API cache cleared');
+        }
+        
+        // Clear Node.js Redis cache by calling the backend API
+        try {
+            $headers = $this->getAuthHeaders();
+            
+            // Determine which cache keys to clear based on endpoint pattern
+            $keysToDelete = [];
+            
+            if ($endpointPattern) {
+                // Map endpoint patterns to specific cache keys
+                // Note: Cache keys must match the format used in Node.js RedisCache.listKey()
+                if (strpos($endpointPattern, 'category_img_list') !== false || strpos($endpointPattern, 'category') !== false) {
+                    // Clear category-related cache keys
+                    // Format: list:{type}:{param1}:{param2}:...
+                    $keysToDelete[] = 'list:category_img_list:version:s3';
+                    $keysToDelete[] = 'list:subcategories_grouped';
+                }
+                
+                if (strpos($endpointPattern, 'subcategories') !== false) {
+                    $keysToDelete[] = 'list:subcategories_grouped';
+                }
+            }
+            
+            // Call Node.js backend to clear Redis cache
+            $clearCacheUrl = $this->baseUrl . '/clear_redis_cache';
+            
+            if (!empty($keysToDelete)) {
+                // Delete specific keys
+                $response = Http::withHeaders($headers)
+                    ->timeout(10)
+                    ->post($clearCacheUrl, ['keys' => $keysToDelete]);
+            } else {
+                // Use type-based clearing
+                $cacheType = 'list'; // Default to list type for category endpoints
+                if ($endpointPattern) {
+                    if (strpos($endpointPattern, 'dashboard') !== false) {
+                        $cacheType = 'dashboard';
+                    }
+                }
+                
+                $response = Http::withHeaders($headers)
+                    ->timeout(10)
+                    ->post($clearCacheUrl, ['type' => $cacheType]);
+            }
+            
+            if ($response->successful()) {
+                Log::info('Node.js Redis cache cleared successfully', [
+                    'pattern' => $endpointPattern,
+                    'keys_deleted' => !empty($keysToDelete) ? $keysToDelete : 'type-based'
+                ]);
+            } else {
+                Log::warning('Failed to clear Node.js Redis cache', [
+                    'pattern' => $endpointPattern,
+                    'status' => $response->status(),
+                    'response' => $response->json()
+                ]);
+            }
+        } catch (\Exception $e) {
+            // Log error but don't fail - PHP cache is already cleared
+            Log::warning('Error calling Node.js cache clear endpoint', [
+                'pattern' => $endpointPattern,
+                'error' => $e->getMessage()
+            ]);
         }
     }
 
@@ -286,6 +354,194 @@ class NodeApiService
     }
 
     /**
+     * Make a POST request with multipart form data (for file uploads)
+     */
+    public function postMultipart($endpoint, $data = [], $fileField = null, $filePath = null, $originalFileName = null)
+    {
+        $fullUrl = $this->baseUrl . $endpoint;
+        $method = 'POST';
+        $timestamp = now()->toIso8601String();
+        
+        Log::info('📤 [ADMIN PANEL] Starting POST Multipart Request to Node.js API', [
+            'timestamp' => $timestamp,
+            'endpoint' => $endpoint,
+            'full_url' => $fullUrl,
+            'has_file' => !empty($fileField) && !empty($filePath),
+            'file_field' => $fileField,
+            'file_path' => $filePath,
+            'file_exists' => $filePath ? file_exists($filePath) : false,
+            'file_size' => $filePath && file_exists($filePath) ? filesize($filePath) : 0,
+            'data_keys' => array_keys($data),
+            'data' => $data
+        ]);
+        
+        try {
+            $headers = $this->getAuthHeaders();
+            // Don't set Content-Type for multipart - Laravel will set it automatically
+            
+            $request = Http::withHeaders($headers)->timeout(30);
+            
+            // Prepare multipart form data
+            $multipartData = [];
+            
+            // Add regular form fields first
+            foreach ($data as $key => $value) {
+                $multipartData[] = [
+                    'name' => $key,
+                    'contents' => $value
+                ];
+            }
+            
+            // Add file if provided
+            if ($fileField && $filePath && file_exists($filePath)) {
+                $fileSize = filesize($filePath);
+                // Use provided original filename, or get from request, or use basename as fallback
+                if (!$originalFileName && request()->hasFile($fileField)) {
+                    $originalFileName = request()->file($fileField)->getClientOriginalName();
+                }
+                if (!$originalFileName) {
+                    $originalFileName = basename($filePath);
+                }
+                $fileContent = file_get_contents($filePath);
+                
+                Log::info('📎 [ADMIN PANEL] Preparing file for multipart request', [
+                    'file_field' => $fileField,
+                    'original_file_name' => $originalFileName,
+                    'file_path' => $filePath,
+                    'file_size_bytes' => $fileSize,
+                    'file_size_mb' => round($fileSize / 1024 / 1024, 2),
+                    'file_exists' => file_exists($filePath),
+                    'content_size' => strlen($fileContent)
+                ]);
+                
+                // Add file to multipart data
+                $multipartData[] = [
+                    'name' => $fileField,
+                    'contents' => $fileContent,
+                    'filename' => $originalFileName
+                ];
+                
+                Log::info('✅ [ADMIN PANEL] File added to multipart data', [
+                    'file_field' => $fileField,
+                    'file_name' => $originalFileName,
+                    'file_size' => $fileSize
+                ]);
+            }
+            
+            Log::info('🚀 [ADMIN PANEL] Sending POST multipart request to Node.js API...', [
+                'endpoint' => $endpoint,
+                'full_url' => $fullUrl,
+                'multipart_fields_count' => count($multipartData),
+                'has_file' => !empty($fileField) && !empty($filePath)
+            ]);
+            
+            // Use asMultipart() for proper multipart/form-data handling
+            $requestStartTime = microtime(true);
+            $response = $request->asMultipart()->post($fullUrl, $multipartData);
+            $requestDuration = round((microtime(true) - $requestStartTime) * 1000, 2);
+            
+            $statusCode = $response->status();
+            $responseBody = $response->body();
+            
+            // Try to parse JSON response - handle both success and error cases
+            $responseData = null;
+            try {
+                $responseData = $response->json();
+            } catch (\Exception $jsonErr) {
+                Log::error('❌ [ADMIN PANEL] Failed to parse JSON response', [
+                    'status_code' => $statusCode,
+                    'response_body_preview' => substr($responseBody, 0, 500),
+                    'json_error' => $jsonErr->getMessage()
+                ]);
+                $responseData = [
+                    'status' => 'error',
+                    'msg' => 'Invalid response from API: ' . $jsonErr->getMessage()
+                ];
+            }
+            
+            Log::info('📥 [ADMIN PANEL] Response received from Node.js API', [
+                'duration_ms' => $requestDuration,
+                'status_code' => $statusCode,
+                'response_status' => $responseData['status'] ?? 'unknown',
+                'response_msg' => $responseData['msg'] ?? 'N/A',
+                'has_data' => isset($responseData['data']),
+                'response_body_preview' => substr($responseBody, 0, 200)
+            ]);
+
+            if ($response->successful()) {
+                Log::info('✅ [ADMIN PANEL] POST Multipart request successful', [
+                    'endpoint' => $endpoint,
+                    'status_code' => $statusCode,
+                    'response_status' => $responseData['status'] ?? 'unknown',
+                    'response_msg' => $responseData['msg'] ?? 'N/A',
+                    'has_data' => isset($responseData['data']),
+                    'response_data_keys' => isset($responseData['data']) ? array_keys($responseData['data']) : [],
+                    'category_img_url' => isset($responseData['data']['category_img']) 
+                        ? substr($responseData['data']['category_img'], 0, 100) . '...' 
+                        : (isset($responseData['data']['cat_img']) 
+                            ? substr($responseData['data']['cat_img'], 0, 100) . '...' 
+                            : 'N/A'),
+                    'full_response_data' => $responseData
+                ]);
+
+                // Invalidate related cache on successful POST (data modification)
+                if ($this->cacheEnabled) {
+                    $this->invalidateRelatedCache($endpoint);
+                }
+                return $responseData;
+            }
+
+            // Log errors with more details
+            $errorMsg = $responseData['msg'] ?? 'API request failed';
+            
+            // Try to get more details from response body if available
+            $responseBody = $response->body();
+            $responseText = is_string($responseBody) ? $responseBody : '';
+            
+            Log::error('❌ [ADMIN PANEL] Node API POST Multipart Error', [
+                'endpoint' => $endpoint,
+                'full_url' => $fullUrl,
+                'status_code' => $statusCode,
+                'response_status' => $responseData['status'] ?? 'unknown',
+                'response_msg' => $errorMsg,
+                'response_data' => $responseData,
+                'response_body' => substr($responseText, 0, 500), // First 500 chars of response body
+                'has_file' => !empty($fileField) && !empty($filePath)
+            ]);
+
+            return [
+                'status' => 'error',
+                'msg' => $errorMsg,
+                'data' => null
+            ];
+        } catch (\Exception $e) {
+            // Log exception with full details
+            $errorMsg = $e->getMessage();
+            $isConnectionError = strpos(strtolower($errorMsg), 'connection') !== false || 
+                                 strpos(strtolower($errorMsg), 'timeout') !== false ||
+                                 strpos(strtolower($errorMsg), 'refused') !== false;
+            
+            Log::error('❌ [ADMIN PANEL] Node API POST Multipart Exception', [
+                'endpoint' => $endpoint,
+                'full_url' => $fullUrl,
+                'error_message' => $errorMsg,
+                'error_code' => $e->getCode(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine(),
+                'is_connection_error' => $isConnectionError,
+                'has_file' => !empty($fileField) && !empty($filePath),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'status' => 'error',
+                'msg' => 'API connection failed: ' . $e->getMessage(),
+                'data' => null
+            ];
+        }
+    }
+
+    /**
      * Make a PUT request to Node.js API
      */
     public function put($endpoint, $data = [])
@@ -333,6 +589,217 @@ class NodeApiService
             return [
                 'status' => 'error',
                 'msg' => 'API connection failed: ' . $e->getMessage(),
+                'data' => null
+            ];
+        }
+    }
+
+    /**
+     * Make a PUT request with multipart form data (for file uploads)
+     */
+    public function putMultipart($endpoint, $data = [], $fileField = null, $filePath = null, $originalFileName = null)
+    {
+        $fullUrl = $this->baseUrl . $endpoint;
+        $method = 'PUT';
+        $timestamp = now()->toIso8601String();
+        
+        Log::info('📤 [ADMIN PANEL] Starting PUT Multipart Request to Node.js API', [
+            'timestamp' => $timestamp,
+            'endpoint' => $endpoint,
+            'full_url' => $fullUrl,
+            'has_file' => !empty($fileField) && !empty($filePath),
+            'file_field' => $fileField,
+            'file_path' => $filePath,
+            'file_exists' => $filePath ? file_exists($filePath) : false,
+            'file_size' => $filePath && file_exists($filePath) ? filesize($filePath) : 0,
+            'data_keys' => array_keys($data),
+            'data' => $data
+        ]);
+        
+        try {
+            $headers = $this->getAuthHeaders();
+            // Don't set Content-Type for multipart - Laravel will set it automatically
+            
+            Log::info('📋 [ADMIN PANEL] Request Details', [
+                'method' => $method,
+                'url' => $fullUrl,
+                'headers_count' => count($headers),
+                'has_auth_header' => isset($headers['api-key'])
+            ]);
+            
+            $request = Http::withHeaders($headers)->timeout(30);
+            
+            // Prepare multipart form data
+            $multipartData = [];
+            
+            // Add regular form fields first
+            foreach ($data as $key => $value) {
+                $multipartData[] = [
+                    'name' => $key,
+                    'contents' => $value
+                ];
+            }
+            
+            // Add file if provided
+            if ($fileField && $filePath && file_exists($filePath)) {
+                $fileSize = filesize($filePath);
+                // Use provided original filename, or get from request, or use basename as fallback
+                if (!$originalFileName && request()->hasFile($fileField)) {
+                    $originalFileName = request()->file($fileField)->getClientOriginalName();
+                }
+                if (!$originalFileName) {
+                    $originalFileName = basename($filePath);
+                }
+                $fileContent = file_get_contents($filePath);
+                
+                Log::info('📎 [ADMIN PANEL] Preparing file for multipart request', [
+                    'file_field' => $fileField,
+                    'original_file_name' => $originalFileName,
+                    'file_path' => $filePath,
+                    'file_size_bytes' => $fileSize,
+                    'file_size_mb' => round($fileSize / 1024 / 1024, 2),
+                    'file_exists' => file_exists($filePath),
+                    'content_size' => strlen($fileContent)
+                ]);
+                
+                // Add file to multipart data
+                $multipartData[] = [
+                    'name' => $fileField,
+                    'contents' => $fileContent,
+                    'filename' => $originalFileName
+                ];
+                
+                Log::info('✅ [ADMIN PANEL] File added to multipart data', [
+                    'file_field' => $fileField,
+                    'file_name' => $originalFileName,
+                    'file_size' => $fileSize
+                ]);
+            } else {
+                Log::info('ℹ️  [ADMIN PANEL] No file to attach', [
+                    'file_field' => $fileField,
+                    'file_path' => $filePath,
+                    'file_exists' => $filePath ? file_exists($filePath) : false
+                ]);
+            }
+            
+            Log::info('🚀 [ADMIN PANEL] Sending PUT multipart request to Node.js API...', [
+                'endpoint' => $endpoint,
+                'full_url' => $fullUrl,
+                'multipart_fields_count' => count($multipartData),
+                'has_file' => !empty($fileField) && !empty($filePath)
+            ]);
+            
+            // Use asMultipart() for proper multipart/form-data handling
+            $requestStartTime = microtime(true);
+            $response = $request->asMultipart()->put($fullUrl, $multipartData);
+            $requestDuration = round((microtime(true) - $requestStartTime) * 1000, 2);
+            
+            $statusCode = $response->status();
+            $responseBody = $response->body();
+            
+            // Try to parse JSON response - handle both success and error cases
+            $responseData = null;
+            try {
+                $responseData = $response->json();
+            } catch (\Exception $jsonErr) {
+                Log::error('❌ [ADMIN PANEL] Failed to parse JSON response', [
+                    'status_code' => $statusCode,
+                    'response_body_preview' => substr($responseBody, 0, 500),
+                    'json_error' => $jsonErr->getMessage()
+                ]);
+                $responseData = [
+                    'status' => 'error',
+                    'msg' => 'Invalid response from API: ' . $jsonErr->getMessage()
+                ];
+            }
+            
+            Log::info('📥 [ADMIN PANEL] Response received from Node.js API', [
+                'duration_ms' => $requestDuration,
+                'status_code' => $statusCode,
+                'response_status' => $responseData['status'] ?? 'unknown',
+                'response_msg' => $responseData['msg'] ?? 'N/A',
+                'has_data' => isset($responseData['data']),
+                'response_body_preview' => substr($responseBody, 0, 200)
+            ]);
+
+            if ($response->successful()) {
+                Log::info('✅ [ADMIN PANEL] PUT Multipart request successful', [
+                    'endpoint' => $endpoint,
+                    'status_code' => $statusCode,
+                    'response_status' => $responseData['status'] ?? 'unknown',
+                    'response_msg' => $responseData['msg'] ?? 'N/A',
+                    'has_data' => isset($responseData['data']),
+                    'response_data_keys' => isset($responseData['data']) ? array_keys($responseData['data']) : [],
+                    'category_img_url' => isset($responseData['data']['category_img']) 
+                        ? substr($responseData['data']['category_img'], 0, 100) . '...' 
+                        : (isset($responseData['data']['cat_img']) 
+                            ? substr($responseData['data']['cat_img'], 0, 100) . '...' 
+                            : 'N/A'),
+                    'full_response_data' => $responseData
+                ]);
+                
+                // Invalidate related cache on successful PUT (data modification)
+                if ($this->cacheEnabled) {
+                    $this->invalidateRelatedCache($endpoint);
+                }
+                return $responseData;
+            }
+
+            // Log errors with more details
+            $errorMsg = $responseData['msg'] ?? 'API request failed';
+            
+            // Try to get more details from response body if available
+            $responseBody = $response->body();
+            $responseText = is_string($responseBody) ? $responseBody : '';
+            
+            Log::error('❌ [ADMIN PANEL] Node API PUT Multipart Error', [
+                'endpoint' => $endpoint,
+                'full_url' => $fullUrl,
+                'status_code' => $statusCode,
+                'response_status' => $responseData['status'] ?? 'unknown',
+                'response_msg' => $errorMsg,
+                'response_data' => $responseData,
+                'response_body' => substr($responseText, 0, 500), // First 500 chars of response body
+                'has_file' => !empty($fileField) && !empty($filePath)
+            ]);
+
+            return [
+                'status' => 'error',
+                'msg' => $errorMsg, // Return the actual error message from API
+                'data' => null
+            ];
+        } catch (\Exception $e) {
+            // Log exception with full details
+            $errorMsg = $e->getMessage();
+            $isConnectionError = strpos(strtolower($errorMsg), 'connection') !== false || 
+                                 strpos(strtolower($errorMsg), 'timeout') !== false ||
+                                 strpos(strtolower($errorMsg), 'refused') !== false;
+            
+            Log::error('❌ [ADMIN PANEL] Node API PUT Multipart Exception', [
+                'endpoint' => $endpoint,
+                'full_url' => $fullUrl,
+                'error_message' => $errorMsg,
+                'error_code' => $e->getCode(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine(),
+                'is_connection_error' => $isConnectionError,
+                'has_file' => !empty($fileField) && !empty($filePath),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            // Provide more specific error message
+            if ($isConnectionError) {
+                $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+                $errorMsg = "Cannot connect to API server. Please ensure Node.js API is accessible at {$nodeUrl}. Error: {$errorMsg}";
+            } elseif (strpos(strtolower($errorMsg), 'upload') !== false || strpos(strtolower($errorMsg), 'image') !== false) {
+                $errorMsg = "The category image failed to upload: {$errorMsg}";
+            } else {
+                $errorMsg = "API connection failed: {$errorMsg}";
+            }
+
+            return [
+                'status' => 'error',
+                'msg' => $errorMsg,
                 'data' => null
             ];
         }

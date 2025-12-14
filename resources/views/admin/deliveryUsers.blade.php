@@ -8,7 +8,7 @@
                 <div class="card">
                     <div class="card-body">
                         @include('layouts.flashmessage')
-                        <h4 class="card-title">B2B Users List</h4>
+                        <h4 class="card-title">Delivery Users (Door Buyers) List</h4>
                         <hr>
                         <div class="card-body p-0">
                             <div class="table-responsive">
@@ -35,18 +35,17 @@
                                         <button type="button" class="btn btn-sm btn-secondary ms-2" id="clearButton" style="display: {{ request('search') ? 'inline-block' : 'none' }};">Clear</button>
                                     </div>
                                 </div>
-                                <table class="table table-striped table-hover" id="b2bUsersTable" style="margin-bottom: 0;">
+                                <table class="table table-striped table-hover" id="deliveryUsersTable" style="margin-bottom: 0;">
                                     <thead style="position: sticky; top: 0; z-index: 10;">
                                         <tr style="background-color: #6c5ce7; color: white;">
                                             <th style="min-width: 60px;">SL NO</th>
-                                            <th style="min-width: 150px;">VENDOR NAME</th>
+                                            <th style="min-width: 150px;">USER NAME</th>
                                             <th style="min-width: 180px;">EMAIL</th>
                                             <th style="min-width: 120px;">CONTACT NO</th>
                                             <th style="min-width: 350px; max-width: 450px;">ADDRESS</th>
                                             <th style="min-width: 120px;">SIGN UP DATE</th>
                                             <th style="min-width: 100px;">APP TYPE</th>
                                             <th style="min-width: 100px;">STATUS</th>
-                                            <th style="min-width: 140px;">APPROVAL STATUS</th>
                                             <th style="min-width: 80px;">ACTION</th>
                                         </tr>
                                     </thead>
@@ -57,8 +56,8 @@
                                                     <td>{{ (($page - 1) * $limit) + $index + 1 }}</td>
                                                     <td>{{ $user->name ?? 'N/A' }}</td>
                                                     <td>{{ $user->email ?? 'N/A' }}</td>
-                                                    <td>{{ $user->contact ?? ($user->shop->contact ?? $user->mob_num ?? 'N/A') }}</td>
-                                                    <td>{{ $user->address ?? ($user->shop->address ?? 'N/A') }}</td>
+                                                    <td>{{ $user->contact ?? ($user->delivery->contact ?? $user->delivery_boy->contact ?? $user->mob_num ?? 'N/A') }}</td>
+                                                    <td>{{ $user->address ?? ($user->delivery->address ?? $user->delivery_boy->address ?? 'N/A') }}</td>
                                                     <td>{{ $user->created_at ? \Carbon\Carbon::parse($user->created_at)->format('Y-m-d') : 'N/A' }}</td>
                                                     <td>
                                                         @php
@@ -72,48 +71,18 @@
                                                     </td>
                                                     <td>
                                                         @php
-                                                            // For v2 users, show approval_status; for v1 users, show del_status
-                                                            $appVersion = $user->app_version ?? 'v1';
-                                                            $approvalStatus = $user->approval_status ?? ($user->shop->approval_status ?? null);
-                                                            
-                                                            if ($appVersion === 'v2') {
-                                                                // Always show approval status for v2 users (default to 'pending' if not set)
-                                                                $status = $approvalStatus ?? 'pending';
-                                                                if ($status === 'approved') {
-                                                                    echo '<span class="badge bg-success">Approved</span>';
-                                                                } elseif ($status === 'pending') {
-                                                                    echo '<span class="badge bg-warning">Pending</span>';
-                                                                } elseif ($status === 'rejected') {
-                                                                    echo '<span class="badge bg-danger">Rejected</span>';
-                                                                } else {
-                                                                    echo '<span class="badge bg-warning">Pending</span>';
-                                                                }
-                                                            } else {
-                                                                // Show del_status for v1 users
-                                                                if (isset($user->del_status) && $user->del_status == 1) {
-                                                                    echo '<span class="badge bg-success">Active</span>';
-                                                                } else {
-                                                                    echo '<span class="badge bg-danger">Inactive</span>';
-                                                                }
-                                                            }
-                                                        @endphp
-                                                    </td>
-                                                    <td>
-                                                        @php
-                                                            $approvalStatus = $user->approval_status ?? ($user->shop->approval_status ?? null);
+                                                            $approvalStatus = $user->approval_status ?? ($user->delivery->approval_status ?? $user->delivery_boy->approval_status ?? 'pending');
                                                         @endphp
                                                         @if($approvalStatus === 'approved')
                                                             <span class="badge bg-success">Approved</span>
-                                                        @elseif($approvalStatus === 'pending')
-                                                            <span class="badge bg-warning">Pending</span>
                                                         @elseif($approvalStatus === 'rejected')
                                                             <span class="badge bg-danger">Rejected</span>
                                                         @else
-                                                            <span class="badge bg-secondary">N/A</span>
+                                                            <span class="badge bg-warning">Pending</span>
                                                         @endif
                                                     </td>
                                                     <td>
-                                                        <a href="{{ route('b2bUserDocuments', ['userId' => $user->id]) }}" class="btn btn-sm btn-info" title="View Documents">
+                                                        <a href="{{ route('deliveryUserDocuments', ['userId' => $user->id]) }}" class="btn btn-sm btn-info" title="View Details">
                                                             <i class="fa fa-eye"></i>
                                                         </a>
                                                     </td>
@@ -121,7 +90,7 @@
                                             @endforeach
                                         @else
                                             <tr>
-                                                <td colspan="10" class="text-center">No matching records found</td>
+                                                <td colspan="9" class="text-center">No matching records found</td>
                                             </tr>
                                         @endif
                                     </tbody>
@@ -196,17 +165,17 @@
 
 @section('contentjs')
 <style>
-    #b2bUsersTable td {
+    #deliveryUsersTable td {
         vertical-align: top;
     }
-    /* Add more space between vendor name and email */
-    #b2bUsersTable td:nth-child(2) {
+    /* Add more space between user name and email */
+    #deliveryUsersTable td:nth-child(2) {
         padding-right: 30px !important;
     }
-    #b2bUsersTable td:nth-child(3) {
+    #deliveryUsersTable td:nth-child(3) {
         padding-left: 20px !important;
     }
-    #b2bUsersTable td:nth-child(5) {
+    #deliveryUsersTable td:nth-child(5) {
         white-space: normal !important;
         word-wrap: break-word;
         word-break: break-word;
@@ -225,13 +194,13 @@ let currentPage = {{ $page ?? 1 }};
 let currentLimit = {{ $limit ?? 10 }};
 let currentSearch = '{{ request('search', '') }}';
 
-function loadB2BUsers(page, limit, search) {
+function loadDeliveryUsers(page, limit, search) {
     // Show loading indicator
-    const tbody = document.querySelector('#b2bUsersTable tbody');
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+    const tbody = document.querySelector('#deliveryUsersTable tbody');
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
     
     // Build URL
-    let url = "{{ route('b2bUsers') }}?page=" + page + "&limit=" + limit;
+    let url = "{{ route('deliveryUsers') }}?page=" + page + "&limit=" + limit;
     if (search && search.trim()) {
         url += "&search=" + encodeURIComponent(search.trim());
     }
@@ -254,7 +223,7 @@ function loadB2BUsers(page, limit, search) {
         tempDiv.innerHTML = html;
         
         // Extract table body
-        const newTbody = tempDiv.querySelector('#b2bUsersTable tbody');
+        const newTbody = tempDiv.querySelector('#deliveryUsersTable tbody');
         const newPagination = tempDiv.querySelector('.d-flex.justify-content-between.align-items-center.mt-3');
         const newPaginationInfo = tempDiv.querySelector('.mt-3');
         
@@ -295,7 +264,7 @@ function loadB2BUsers(page, limit, search) {
     })
     .catch(error => {
         console.error('Error loading data:', error);
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Error loading data. Please try again.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Error loading data. Please try again.</td></tr>';
     });
 }
 
@@ -305,24 +274,24 @@ function attachPaginationListeners() {
         link.addEventListener('click', function(e) {
             e.preventDefault();
             const page = parseInt(this.getAttribute('data-page')) || 1;
-            loadB2BUsers(page, currentLimit, currentSearch);
+            loadDeliveryUsers(page, currentLimit, currentSearch);
         });
     });
 }
 
 function changeEntriesPerPage() {
     const limit = document.getElementById('entriesPerPage').value;
-    loadB2BUsers(1, parseInt(limit), currentSearch);
+    loadDeliveryUsers(1, parseInt(limit), currentSearch);
 }
 
 function performSearch() {
     const search = document.getElementById('searchInput').value;
-    loadB2BUsers(1, currentLimit, search);
+    loadDeliveryUsers(1, currentLimit, search);
 }
 
 function clearSearch() {
     document.getElementById('searchInput').value = '';
-    loadB2BUsers(1, currentLimit, '');
+    loadDeliveryUsers(1, currentLimit, '');
 }
 
 // Event listeners
@@ -349,4 +318,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endsection
+
+
+
+
+
+
+
+
 

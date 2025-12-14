@@ -503,6 +503,52 @@ class AdminController extends Controller
         }
     }
 
+    public function deliveryUsers(Request $request)
+    {
+        // Reduced logging for performance
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 10);
+        $search = $request->get('search', '');
+        
+        $params = [
+            'page' => $page,
+            'limit' => $limit
+        ];
+        
+        if (!empty($search)) {
+            $params['search'] = $search;
+        }
+        
+        $apiResponse = $this->nodeApi->get('/admin/delivery-users', $params);
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $data = $apiResponse['data'];
+            // Convert users array to collection of objects
+            if (isset($data['users']) && is_array($data['users'])) {
+                $data['users'] = collect($data['users'])->map(function($user) {
+                    return (object)$user;
+                });
+            } else {
+                $data['users'] = collect([]);
+            }
+            
+            $data['pagename'] = 'Delivery Users (Door Buyers)';
+            return view('admin/deliveryUsers', $data);
+        } else {
+            Log::error('Node API failed for deliveryUsers', ['response' => $apiResponse]);
+            $data = [
+                'pagename' => 'Delivery Users (Door Buyers)',
+                'users' => collect([]),
+                'total' => 0,
+                'page' => 1,
+                'limit' => 10,
+                'totalPages' => 0,
+                'hasMore' => false
+            ];
+            return view('admin/deliveryUsers', $data);
+        }
+    }
+
     public function updateB2CApprovalStatus(Request $request, $userId)
     {
         Log::info('AdminController::updateB2CApprovalStatus called', [
@@ -558,7 +604,7 @@ class AdminController extends Controller
             return view('admin/deliveryUserDocuments', $data);
         } else {
             Log::error('Node API failed for viewDeliveryUserDocuments', ['response' => $apiResponse]);
-            return redirect()->route('users')->with('error', 'Failed to load user documents');
+            return redirect()->route('deliveryUsers')->with('error', 'Failed to load user details');
         }
     }
 
@@ -726,10 +772,8 @@ class AdminController extends Controller
     {
         Log::info('🔵 AdminController::set_permission called', ['id' => $id]);
         $endpoint = '/admin/set_permission' . ($id ? '/' . $id : '');
-        // Using localhost:3000 for local development
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
-        // Server URL (commented out for local development):
-        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+        // Default to production Lambda Function URL if not configured
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
         $nodeApiUrl = rtrim($nodeUrl, '/') . '/api';
         $fullUrl = $nodeApiUrl . $endpoint;
         Log::info('🔵 Calling Node.js API', [

@@ -1,149 +1,356 @@
 <div class="card">
     <div class="card-body">
-        <ul class="d-sm-flex d-block align-items-start justify-content-between mb-5">
-            <li class="food-media">
-                <img src="" class="rounded" alt="">
-            </li>
-            <li class="ms-sm-3 ms-0">
-                <h4 class="heading">cxzv</h4>
-                {{-- <span class="badge badge-primary badge-sm mb-3">Lunch</span> --}}
-                <p>Delivery Boy</p>
+        @if(isset($order) && $order)
+            <ul class="d-sm-flex d-block align-items-start justify-content-between mb-5">
+                <li class="food-media">
+                    @php
+                        $deliveryBoyName = 'N/A';
+                        $deliveryBoyImage = '';
+                        if (isset($deliveryBoy) && $deliveryBoy) {
+                            $deliveryBoyName = $deliveryBoy->name ?? ($deliveryBoy->delivery_boy->name ?? 'N/A');
+                            $deliveryBoyImage = $deliveryBoy->profile_img ?? ($deliveryBoy->delivery_boy->profile_img ?? '');
+                        }
+                        // Handle image URL - if it's a full URL, use it; otherwise, try to construct a proper path
+                        if ($deliveryBoyImage && !filter_var($deliveryBoyImage, FILTER_VALIDATE_URL)) {
+                            // If it's not a full URL, it might be a relative path - use as is or construct URL
+                            if (strpos($deliveryBoyImage, 'http') !== 0) {
+                                // Assume it's already a full URL from the API, or use as-is
+                            }
+                        }
+                    @endphp
+                    @if($deliveryBoyImage)
+                        <img src="{{ $deliveryBoyImage }}" class="rounded" alt="Delivery Boy" style="width: 100px; height: 100px; object-fit: cover;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'%3E%3Crect fill=\'%23ddd\' width=\'100\' height=\'100\'/%3E%3Ctext fill=\'%23999\' x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\'%3ENo Image%3C/text%3E%3C/svg%3E';">
+                    @else
+                        <div class="rounded" style="width: 100px; height: 100px; background-color: #ddd; display: flex; align-items: center; justify-content: center; color: #999;">No Image</div>
+                    @endif
+                </li>
+                <li class="ms-sm-3 ms-0">
+                    <h4 class="heading">{{ $deliveryBoyName }}</h4>
+                    <p>Delivery Boy</p>
 
-                <div class="row">
-                    <div class="col-6">
-                        <p class="mb-0">E-mail: </p>
+                    <div class="row">
+                        <div class="col-6">
+                            <p class="mb-0">E-mail: 
+                                @if(isset($deliveryBoy) && $deliveryBoy)
+                                    <span>{{ $deliveryBoy->email ?? ($deliveryBoy->delivery_boy->email ?? 'N/A') }}</span>
+                                @else
+                                    <span>N/A</span>
+                                @endif
+                            </p>
+                        </div>
+                        <div class="col-6">
+                            <p class="mb-0">Phone: 
+                                @if(isset($deliveryBoy) && $deliveryBoy)
+                                    <span>{{ $deliveryBoy->contact ?? ($deliveryBoy->delivery_boy->contact ?? ($deliveryBoy->mob_num ?? 'N/A')) }}</span>
+                                @else
+                                    <span>N/A</span>
+                                @endif
+                            </p>
+                        </div>
                     </div>
-                    <div class="col-6">
-                        <p class="mb-0">Phone: </p>
+                    <div class="row">
+                        <div class="col-6">
+                            <p class="mb-0">Age:
+                                @if(isset($deliveryBoy) && $deliveryBoy)
+                                    <span>{{ $deliveryBoy->age ?? ($deliveryBoy->delivery_boy->age ?? 'N/A') }}</span>
+                                @else
+                                    <span>N/A</span>
+                                @endif
+                            </p>
+                        </div>
+                        <div class="col-6">
+                            <p class="mb-0">DOB: 
+                                @if(isset($deliveryBoy) && $deliveryBoy)
+                                    @php
+                                        $dob = $deliveryBoy->dob ?? ($deliveryBoy->delivery_boy->dob ?? null);
+                                        if ($dob) {
+                                            try {
+                                                $dobFormatted = date('d-m-Y', strtotime($dob));
+                                            } catch (\Exception $e) {
+                                                $dobFormatted = $dob;
+                                            }
+                                        } else {
+                                            $dobFormatted = 'N/A';
+                                        }
+                                    @endphp
+                                    <span>{{ $dobFormatted }}</span>
+                                @else
+                                    <span>N/A</span>
+                                @endif
+                            </p>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-6">
+                            <p class="mb-0">Licence No: 
+                                @if(isset($deliveryBoy) && $deliveryBoy)
+                                    <span>{{ $deliveryBoy->licence_no ?? ($deliveryBoy->delivery_boy->licence_no ?? ($deliveryBoy->driving_license_number ?? 'N/A')) }}</span>
+                                @else
+                                    <span>N/A</span>
+                                @endif
+                            </p>
+                        </div>
+                        <div class="col-12">
+                            <p class="mb-0">Address: 
+                                @if(isset($deliveryBoy) && $deliveryBoy)
+                                    <span>{{ $deliveryBoy->address ?? ($deliveryBoy->delivery_boy->address ?? 'N/A') }}</span>
+                                @else
+                                    <span>N/A</span>
+                                @endif
+                            </p>
+                        </div>
+                    </div>
+                </li>
+            </ul>
+            
+            {{-- Order Information Section --}}
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5 class="mb-3">Order Information</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <tbody>
+                                <tr>
+                                    <th width="30%">Order Number:</th>
+                                    <td>{{ $order->order_number ?? ($order->order_no ?? ($order->id ?? 'N/A')) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Status:</th>
+                                    <td>
+                                        @php
+                                            $status = isset($order->status) ? (int)$order->status : 0;
+                                            $statusText = match($status) {
+                                                0 => 'Request Pending',
+                                                1 => 'Accepted',
+                                                2 => 'Processing',
+                                                3 => 'Out for Delivery',
+                                                4 => 'Delivered',
+                                                5 => 'Cancelled',
+                                                default => 'Unknown'
+                                            };
+                                        @endphp
+                                        {{ $statusText }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Order Date:</th>
+                                    <td>
+                                        @if(isset($order->date))
+                                            {{ date('d-m-Y', strtotime($order->date)) }}
+                                        @elseif(isset($order->created_at))
+                                            {{ date('d-m-Y', strtotime($order->created_at)) }}
+                                        @elseif(isset($order->order_date))
+                                            {{ date('d-m-Y', strtotime($order->order_date)) }}
+                                        @else
+                                            N/A
+                                        @endif
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Estimated Weight:</th>
+                                    <td>{{ $order->estim_weight ?? ($order->estimated_weight ?? 'N/A') }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Estimated Price:</th>
+                                    <td>{{ $order->estim_price ?? ($order->estimated_price ?? 'N/A') }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Delivery Type:</th>
+                                    <td>{{ $order->del_type ?? ($order->delivery_type ?? 'N/A') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div class="row">
-                    <div class="col-6">
-                        <p class="mb-0">Age:</p>
-                    </div>
-                    <div class="col-6">
-                        <p class="mb-0">DOB: </p>
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-6">
-                        <p class="mb-0">Licence No: </p>
-                    </div>
-                    <div class="col-12">
-                        <p class="mb-0">Address: </p>
-                    </div>
-                </div>
-            </li>
-             <li>
-                <div class="dropdown custom-dropdown">
-                    {{--<div class="btn sharp btn-light" data-bs-toggle="dropdown" aria-expanded="false">
-                        <svg width="24" height="6" viewBox="0 0 24 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12.0012 0.359985C11.6543 0.359985 11.3109 0.428302 10.9904 0.561035C10.67 0.693767 10.3788 0.888317 10.1335 1.13358C9.88829 1.37883 9.69374 1.67 9.56101 1.99044C9.42828 2.31089 9.35996 2.65434 9.35996 3.00119C9.35996 3.34803 9.42828 3.69148 9.56101 4.01193C9.69374 4.33237 9.88829 4.62354 10.1335 4.8688C10.3788 5.11405 10.67 5.3086 10.9904 5.44134C11.3109 5.57407 11.6543 5.64239 12.0012 5.64239C12.7017 5.64223 13.3734 5.36381 13.8686 4.86837C14.3638 4.37294 14.6419 3.70108 14.6418 3.00059C14.6416 2.3001 14.3632 1.62836 13.8677 1.13315C13.3723 0.637942 12.7004 0.359826 12 0.359985H12.0012ZM3.60116 0.359985C3.25431 0.359985 2.91086 0.428302 2.59042 0.561035C2.26997 0.693767 1.97881 0.888317 1.73355 1.13358C1.48829 1.37883 1.29374 1.67 1.16101 1.99044C1.02828 2.31089 0.959961 2.65434 0.959961 3.00119C0.959961 3.34803 1.02828 3.69148 1.16101 4.01193C1.29374 4.33237 1.48829 4.62354 1.73355 4.8688C1.97881 5.11405 2.26997 5.3086 2.59042 5.44134C2.91086 5.57407 3.25431 5.64239 3.60116 5.64239C4.30165 5.64223 4.97339 5.36381 5.4686 4.86837C5.9638 4.37294 6.24192 3.70108 6.24176 3.00059C6.2416 2.3001 5.96318 1.62836 5.46775 1.13315C4.97231 0.637942 4.30045 0.359826 3.59996 0.359985H3.60116ZM20.4012 0.359985C20.0543 0.359985 19.7109 0.428302 19.3904 0.561035C19.07 0.693767 18.7788 0.888317 18.5336 1.13358C18.2883 1.37883 18.0937 1.67 17.961 1.99044C17.8283 2.31089 17.76 2.65434 17.76 3.00119C17.76 3.34803 17.8283 3.69148 17.961 4.01193C18.0937 4.33237 18.2883 4.62354 18.5336 4.8688C18.7788 5.11405 19.07 5.3086 19.3904 5.44134C19.7109 5.57407 20.0543 5.64239 20.4012 5.64239C21.1017 5.64223 21.7734 5.36381 22.2686 4.86837C22.7638 4.37294 23.0419 3.70108 23.0418 3.00059C23.0416 2.3001 22.7632 1.62836 22.2677 1.13315C21.7723 0.637942 21.1005 0.359826 20.4 0.359985H20.4012Z" fill="#A098AE"></path>
-                        </svg>
-                    </div>
-                    <div class="dropdown-menu dropdown-menu-end" style="">
-                        <a class="dropdown-item" href="javascript:void(0);">Option 1</a>
-                        <a class="dropdown-item" href="javascript:void(0);">Option 2</a>
-                        <a class="dropdown-item" href="javascript:void(0);">Option 3</a>
-                    </div>--}}
-                </div>
-            </li> 
-        </ul>
-        {{-- <div class="row mt-4">
-            <div class="col-xl-6 col-md-6">
-                <h5>Ingredients</h5>
-                <ul class="food-recipe">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault1">
-                        <label class="form-check-label font-w400" for="flexCheckDefault1">
-                            2 tablespoons butter, softened, divided
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault2">
-                        <label class="form-check-label font-w400" for="flexCheckDefault2">
-                            1 teaspoon minced fresh parsley
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault3">
-                        <label class="form-check-label font-w400" for="flexCheckDefault3">
-                            1/2 teaspoon minced garlic
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault4">
-                        <label class="form-check-label font-w400" for="flexCheckDefault4">
-                            1/4 teaspoon reduced-sodium soy sauce
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault5">
-                        <label class="form-check-label font-w400" for="flexCheckDefault5">
-                            1 beef flat iron steak or boneless top sirloin steak (3/4 pound)
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault6">
-                        <label class="form-check-label font-w400" for="flexCheckDefault6">
-                            1/8 teaspoon salt
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault7">
-                        <label class="form-check-label font-w400" for="flexCheckDefault7">
-                            1/8 teaspoon pepper
-                        </label>
-                    </div>
-                </ul>
             </div>
-            <div class="col-xl-4 col-md-6">
-                <h5>Nutrition:</h5>
-                <ul class="food-recipe">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault8">
-                        <label class="form-check-label font-w400" for="flexCheckDefault8">
-                            Calories: 217.
-                        </label>
+            
+            {{-- Customer Information Section --}}
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5 class="mb-3">Customer Information</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <tbody>
+                                <tr>
+                                    <th width="30%">Name:</th>
+                                    <td>
+                                        @php
+                                            $customerName = 'N/A';
+                                            if (isset($order->customerdetails)) {
+                                                if (is_object($order->customerdetails)) {
+                                                    $customerName = $order->customerdetails->name ?? ($order->customerdetails->customer_name ?? 'N/A');
+                                                } elseif (is_array($order->customerdetails)) {
+                                                    $customerName = $order->customerdetails['name'] ?? ($order->customerdetails['customer_name'] ?? 'N/A');
+                                                }
+                                            }
+                                        @endphp
+                                        {{ $customerName }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Contact:</th>
+                                    <td>
+                                        @php
+                                            $customerContact = 'N/A';
+                                            if (isset($order->customerdetails)) {
+                                                if (is_object($order->customerdetails)) {
+                                                    $customerContact = $order->customerdetails->contact ?? ($order->customerdetails->phone ?? ($order->customerdetails->mob_num ?? 'N/A'));
+                                                } elseif (is_array($order->customerdetails)) {
+                                                    $customerContact = $order->customerdetails['contact'] ?? ($order->customerdetails['phone'] ?? ($order->customerdetails['mob_num'] ?? 'N/A'));
+                                                }
+                                            }
+                                        @endphp
+                                        {{ $customerContact }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Address:</th>
+                                    <td>
+                                        @php
+                                            $customerAddress = 'N/A';
+                                            if (isset($order->customerdetails)) {
+                                                if (is_object($order->customerdetails)) {
+                                                    $customerAddress = $order->customerdetails->address ?? 'N/A';
+                                                } elseif (is_array($order->customerdetails)) {
+                                                    $customerAddress = $order->customerdetails['address'] ?? 'N/A';
+                                                }
+                                            }
+                                        @endphp
+                                        {{ $customerAddress }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault9">
-                        <label class="form-check-label font-w400" for="flexCheckDefault9">
-                            Water: 61%
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault10">
-                        <label class="form-check-label font-w400" for="flexCheckDefault10">
-                            Protein: 26.1 grams.
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault11">
-                        <label class="form-check-label font-w400" for="flexCheckDefault11">
-                            Carbs: 0 grams.
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault12">
-                        <label class="form-check-label font-w400" for="flexCheckDefault12">
-                            Sugar: 0 grams.
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault13">
-                        <label class="form-check-label font-w400" for="flexCheckDefault13">
-                            Fiber: 0 grams.
-                        </label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault14">
-                        <label class="form-check-label font-w400" for="flexCheckDefault14">
-                            Fiber: 0 grams.
-                        </label>
-                    </div>
-                </ul>
+                </div>
             </div>
-        </div> --}}
+            
+            {{-- Scrap Images Section --}}
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5 class="mb-3">Scrap Images</h5>
+                    <div class="row">
+                        @php
+                            $scrapImages = [];
+                            
+                            // Check if images are in an array format
+                            if (isset($order->images) && is_array($order->images)) {
+                                foreach ($order->images as $img) {
+                                    if (!empty($img)) {
+                                        $scrapImages[] = $img;
+                                    }
+                                }
+                            }
+                            
+                            // Also check individual image fields (image1, image2, etc.)
+                            for ($i = 1; $i <= 6; $i++) {
+                                $imageField = 'image' . $i;
+                                if (isset($order->$imageField) && !empty($order->$imageField)) {
+                                    $imageUrl = $order->$imageField;
+                                    // Ensure it's a valid URL or add to array if not already included
+                                    if (filter_var($imageUrl, FILTER_VALIDATE_URL) || strpos($imageUrl, 'http') === 0) {
+                                        // Only add if not already in array
+                                        if (!in_array($imageUrl, $scrapImages)) {
+                                            $scrapImages[] = $imageUrl;
+                                        }
+                                    }
+                                }
+                            }
+                        @endphp
+                        @if(count($scrapImages) > 0)
+                            @foreach($scrapImages as $index => $imageUrl)
+                                <div class="col-md-4 col-sm-6 mb-3">
+                                    <div class="card shadow-sm" style="border: 1px solid #e0e0e0;">
+                                        <a href="{{ $imageUrl }}" target="_blank" class="image-gallery-item" style="text-decoration: none; display: block;">
+                                            <img src="{{ $imageUrl }}" 
+                                                 class="card-img-top" 
+                                                 alt="Scrap Image {{ $index + 1 }}" 
+                                                 style="width: 100%; height: 250px; object-fit: cover; cursor: pointer; transition: transform 0.2s;"
+                                                 onmouseover="this.style.transform='scale(1.02)'"
+                                                 onmouseout="this.style.transform='scale(1)'"
+                                                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'300\' height=\'250\'%3E%3Crect fill=\'%23ddd\' width=\'300\' height=\'250\'/%3E%3Ctext fill=\'%23999\' x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\'%3EImage Not Found%3C/text%3E%3C/svg%3E'; this.onerror=null;">
+                                        </a>
+                                        <div class="card-body p-2 text-center">
+                                            <small class="text-muted">Image {{ $index + 1 }}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        @else
+                            <div class="col-12">
+                                <div class="alert alert-info">
+                                    <p class="mb-0"><i class="fa fa-info-circle"></i> No scrap images uploaded for this order.</p>
+                                </div>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+            
+            {{-- Shop Information Section --}}
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5 class="mb-3">Shop Information</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <tbody>
+                                <tr>
+                                    <th width="30%">Shop Name:</th>
+                                    <td>
+                                        @php
+                                            $shopName = 'N/A';
+                                            if (isset($order->shopdetails)) {
+                                                if (is_object($order->shopdetails)) {
+                                                    $shopName = $order->shopdetails->shopname ?? ($order->shopdetails->shop_name ?? ($order->shopdetails->name ?? 'N/A'));
+                                                } elseif (is_array($order->shopdetails)) {
+                                                    $shopName = $order->shopdetails['shopname'] ?? ($order->shopdetails['shop_name'] ?? ($order->shopdetails['name'] ?? 'N/A'));
+                                                }
+                                            }
+                                        @endphp
+                                        {{ $shopName }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Contact:</th>
+                                    <td>
+                                        @php
+                                            $shopContact = 'N/A';
+                                            if (isset($order->shopdetails)) {
+                                                if (is_object($order->shopdetails)) {
+                                                    $shopContact = $order->shopdetails->contact ?? ($order->shopdetails->phone ?? ($order->shopdetails->mob_num ?? 'N/A'));
+                                                } elseif (is_array($order->shopdetails)) {
+                                                    $shopContact = $order->shopdetails['contact'] ?? ($order->shopdetails['phone'] ?? ($order->shopdetails['mob_num'] ?? 'N/A'));
+                                                }
+                                            }
+                                        @endphp
+                                        {{ $shopContact }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Address:</th>
+                                    <td>
+                                        @php
+                                            $shopAddress = 'N/A';
+                                            if (isset($order->shopdetails)) {
+                                                if (is_object($order->shopdetails)) {
+                                                    $shopAddress = $order->shopdetails->address ?? 'N/A';
+                                                } elseif (is_array($order->shopdetails)) {
+                                                    $shopAddress = $order->shopdetails['address'] ?? 'N/A';
+                                                }
+                                            }
+                                        @endphp
+                                        {{ $shopAddress }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        @else
+            <div class="alert alert-warning">
+                <p>Order details not found.</p>
+            </div>
+        @endif
     </div>
 </div>

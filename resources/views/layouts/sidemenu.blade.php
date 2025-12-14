@@ -49,6 +49,7 @@
                 <li><a href="{{ route('agents') }}">Vendor Manage</a></li>
                 <li><a href="{{ route('b2bUsers') }}">B2B Manage</a></li>
                 <li><a href="{{ route('b2cUsers') }}">B2C Manage</a></li>
+                <li><a href="{{ route('deliveryUsers') }}">Door Buyers Manage</a></li>
                 {{-- <li><a href="{{ route('agents_leads') }}">Leads Manage</a></li> --}}
                 {{-- <li><a href="{{ route('commission_track') }}">Commission Tracking</a></li> --}}
                 {{-- <li><a href="{{ route('agent_report') }}">Agent Report</a></li> --}}
@@ -105,6 +106,11 @@
         </li>
         @endif
         @if(App\Models\User::permission($auth_user->user_type,'Site Manage',$auth_user->id))
+        <li><a href="{{ route('categories') }}" >
+                <i class="material-icons">category</i>
+                <span class="nav-text">Categories</span>
+            </a>
+        </li>
         <li><a class="has-arrow " href="javascript:void(0);" aria-expanded="false">
             <i class="material-icons"> extension </i>
             <span class="nav-text">Settings</span>

@@ -12,8 +12,11 @@ use Illuminate\Support\Facades\Route;
 |
 | Node.js Server Base URL: Configure in .env (NODE_URL)
 |
+| Note: Dashboard API routes are in web.php under /api prefix
+| to support session-based authentication.
+|
 */
 
 // All API routes are now handled by the Node.js server
-// This file exists only to prevent Laravel from throwing errors
+// Dashboard API routes are in web.php (under /api prefix) for session auth
 

@@ -58,7 +58,7 @@
                                                     <td>{{ $user->email ?? 'N/A' }}</td>
                                                     <td>{{ $user->contact ?? ($user->shop->contact ?? $user->mob_num ?? 'N/A') }}</td>
                                                     <td>{{ $user->address ?? ($user->shop->address ?? 'N/A') }}</td>
-                                                    <td>{{ $user->created_at ? \Carbon\Carbon::parse($user->created_at)->format('Y-m-d') : 'N/A' }}</td>
+                                                    <td>{{ isset($user->created_at) && $user->created_at ? \Carbon\Carbon::parse($user->created_at)->format('Y-m-d') : 'N/A' }}</td>
                                                     <td>
                                                         @php
                                                             $appVersion = $user->app_version ?? 'v1';
@@ -70,11 +70,32 @@
                                                         @endif
                                                     </td>
                                                     <td>
-                                                        @if(isset($user->del_status) && $user->del_status == 1)
-                                                            <span class="badge bg-success">Active</span>
-                                                        @else
-                                                            <span class="badge bg-danger">Inactive</span>
-                                                        @endif
+                                                        @php
+                                                            // For v2 users, show approval_status; for v1 users, show del_status
+                                                            $appVersion = $user->app_version ?? 'v1';
+                                                            $approvalStatus = $user->approval_status ?? ($user->shop->approval_status ?? null);
+                                                            
+                                                            if ($appVersion === 'v2') {
+                                                                // Always show approval status for v2 users (default to 'pending' if not set)
+                                                                $status = $approvalStatus ?? 'pending';
+                                                                if ($status === 'approved') {
+                                                                    echo '<span class="badge bg-success">Approved</span>';
+                                                                } elseif ($status === 'pending') {
+                                                                    echo '<span class="badge bg-warning">Pending</span>';
+                                                                } elseif ($status === 'rejected') {
+                                                                    echo '<span class="badge bg-danger">Rejected</span>';
+                                                                } else {
+                                                                    echo '<span class="badge bg-warning">Pending</span>';
+                                                                }
+                                                            } else {
+                                                                // Show del_status for v1 users
+                                                                if (isset($user->del_status) && $user->del_status == 1) {
+                                                                    echo '<span class="badge bg-success">Active</span>';
+                                                                } else {
+                                                                    echo '<span class="badge bg-danger">Inactive</span>';
+                                                                }
+                                                            }
+                                                        @endphp
                                                     </td>
                                                     <td>
                                                         <a href="{{ route('b2cUserDocuments', ['userId' => $user->id]) }}" class="btn btn-sm btn-info" title="View Details">
