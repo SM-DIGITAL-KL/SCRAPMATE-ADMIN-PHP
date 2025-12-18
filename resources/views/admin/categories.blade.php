@@ -219,7 +219,7 @@
                                                                                         </div>
                                                                                         <div class="mb-3">
                                                                                             <label class="form-label">Subcategory Image URL</label>
-                                                                                            <input type="text" class="form-control" name="subcategory_img" value="{{ $subcategory['subcategory_img'] ?? '' }}" placeholder="Or enter image URL">
+                                                                                            <input type="text" class="form-control" name="subcategory_img" value="{{ $subcategory['subcategory_img'] ?? '' }}" placeholder="Or enter image URL" maxlength="2000">
                                                                                             @if(isset($subcategory['subcategory_img']))
                                                                                                 <small class="text-muted d-block mt-2">Current image:</small>
                                                                                                 <img src="{{ $subcategory['subcategory_img'] }}" alt="Subcategory Image" class="img-thumbnail mt-2" style="max-width: 200px;">
@@ -279,7 +279,7 @@
                                                     </div>
                                                     <div class="mb-3">
                                                         <label class="form-label">Category Image URL</label>
-                                                        <input type="text" class="form-control" name="category_img" value="{{ $category['category_img'] ?? $category['cat_img'] ?? '' }}" placeholder="Or enter image URL" maxlength="500">
+                                                        <input type="text" class="form-control" name="category_img" value="{{ $category['category_img'] ?? $category['cat_img'] ?? '' }}" placeholder="Or enter image URL" maxlength="2000">
                                                         @php
                                                             $previewImageUrl = $category['category_img'] ?? $category['cat_img'] ?? '';
                                                             // Validate URL - allow all valid HTTP(S) URLs
@@ -347,7 +347,7 @@
                                                     </div>
                                                     <div class="mb-3">
                                                         <label class="form-label">Subcategory Image URL</label>
-                                                        <input type="text" class="form-control" name="subcategory_img" placeholder="Or enter image URL">
+                                                        <input type="text" class="form-control" name="subcategory_img" placeholder="Or enter image URL" maxlength="2000">
                                                     </div>
                                                     <div class="mb-3">
                                                         <label class="form-label">Default Price</label>
@@ -616,4 +616,3 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 @endsection
-

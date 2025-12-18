@@ -182,9 +182,10 @@ class CategoryController extends Controller
             
             // Custom validation: only validate image if a file is actually uploaded
             // This handles cases where an empty UploadedFile object might be sent
+            // Note: category_img max length increased to 2000 to accommodate presigned S3 URLs
             $validationRules = [
                 'category_name' => 'required|string|max:255',
-                'category_img' => 'nullable|string|max:500',
+                'category_img' => 'nullable|string|max:2000', // Increased from 500 to accommodate presigned S3 URLs
             ];
             
             // Only add image validation if a file is actually being uploaded
@@ -569,7 +570,7 @@ class CategoryController extends Controller
                 'subcategory_name' => 'required|string|max:255',
                 'default_price' => 'nullable|string|max:50',
                 'price_unit' => 'nullable|string|in:kg,pcs',
-                'subcategory_img' => 'nullable|string|max:500',
+                'subcategory_img' => 'nullable|string|max:2000', // Increased from 500 to accommodate presigned S3 URLs
                 'subcategory_image' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:10240' // 10MB max
             ]);
 
@@ -718,4 +719,3 @@ class CategoryController extends Controller
         }
     }
 }
-

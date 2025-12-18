@@ -21,26 +21,50 @@ class CustomerController extends Controller
     {
         $this->nodeApi = $nodeApi;
     }
-    public function customers()
+    public function customers(Request $request)
     {
-        Log::info('🔵 CustomerController::customers called - attempting to call Node.js API');
-        $apiResponse = $this->nodeApi->get('/customer/list');
+        // Reduced logging for performance
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 10);
+        $search = $request->get('search', '');
         
-        Log::info('🔵 Node.js API Response for customers', [
-            'status' => $apiResponse['status'] ?? 'unknown',
-            'hasData' => isset($apiResponse['data']),
-            'response' => $apiResponse
-        ]);
+        $params = [
+            'page' => $page,
+            'limit' => $limit
+        ];
+        
+        if (!empty($search)) {
+            $params['search'] = $search;
+        }
+        
+        $apiResponse = $this->nodeApi->get('/admin/customers', $params);
         
         if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
             $data = $apiResponse['data'];
-            Log::info('✅ customers: Successfully retrieved data');
+            // Convert users array to collection of objects
+            if (isset($data['users']) && is_array($data['users'])) {
+                $data['users'] = collect($data['users'])->map(function($user) {
+                    return (object)$user;
+                });
+            } else {
+                $data['users'] = collect([]);
+            }
+            
+            $data['pagename'] = 'Customers';
+            return view('customers/customers', $data);
         } else {
-            Log::error('❌ Node API failed for customers', ['response' => $apiResponse]);
-            $data = ['pagename' => 'Customers'];
+            Log::error('Node API failed for customers', ['response' => $apiResponse]);
+            $data = [
+                'pagename' => 'Customers',
+                'users' => collect([]),
+                'total' => 0,
+                'page' => 1,
+                'limit' => 10,
+                'totalPages' => 0,
+                'hasMore' => false
+            ];
+            return view('customers/customers', $data);
         }
-        
-        return view('customers/customers', $data);
     }
     
     public function orders()
@@ -292,6 +316,253 @@ class CustomerController extends Controller
                     // Try to decode JSON
                     $json = json_decode($order->shopdetails, true);
                     
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+                        // Successfully decoded JSON
+                        $shopId = $json['shop_id'] ?? ($json['id'] ?? null);
+                        $shopName = $json['shopname'] ?? ($json['shop_name'] ?? ($json['name'] ?? 'N/A'));
+                    } else {
+                        // Try decoding with stripslashes if escaped
+                        $cleaned = stripslashes($order->shopdetails);
+                        $json = json_decode($cleaned, true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+                            $shopId = $json['shop_id'] ?? ($json['id'] ?? null);
+                            $shopName = $json['shopname'] ?? ($json['shop_name'] ?? ($json['name'] ?? 'N/A'));
+                        } else {
+                            // Try regex extraction as last resort
+                            if (preg_match('/"shopname"\s*:\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"/', $order->shopdetails, $matches)) {
+                                $shopName = stripcslashes($matches[1]);
+                            } elseif (preg_match('/"shop_name"\s*:\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"/', $order->shopdetails, $matches)) {
+                                $shopName = stripcslashes($matches[1]);
+                            } elseif (preg_match('/shopname["\']?\s*:\s*["\']([^"\']+)["\']/', $order->shopdetails, $matches)) {
+                                $shopName = $matches[1];
+                            }
+                            
+                            if (preg_match('/"shop_id"\s*:\s*"?(\d+)"?/', $order->shopdetails, $idMatches)) {
+                                $shopId = $idMatches[1];
+                            } elseif (preg_match('/"id"\s*:\s*"?(\d+)"?/', $order->shopdetails, $idMatches)) {
+                                $shopId = $idMatches[1];
+                            }
+                        }
+                    }
+                } elseif (is_object($order->shopdetails)) {
+                    $shopId = $order->shopdetails->shop_id ?? ($order->shopdetails->id ?? null);
+                    $shopName = $order->shopdetails->shopname ?? ($order->shopdetails->shop_name ?? ($order->shopdetails->name ?? 'N/A'));
+                } elseif (is_array($order->shopdetails)) {
+                    $shopId = $order->shopdetails['shop_id'] ?? ($order->shopdetails['id'] ?? null);
+                    $shopName = $order->shopdetails['shopname'] ?? ($order->shopdetails['shop_name'] ?? ($order->shopdetails['name'] ?? 'N/A'));
+                }
+                
+                // Fallback: if still N/A and we have the raw value, try one more time
+                if ($shopName === 'N/A' && is_string($order->shopdetails) && strlen($order->shopdetails) > 0) {
+                    // Maybe it's just a plain string name?
+                    if (strlen($order->shopdetails) < 100 && !str_contains($order->shopdetails, '{')) {
+                        $shopName = $order->shopdetails;
+                    }
+                }
+                
+                if ($shopId) {
+                    return '<p><a href="'.route('shop_view_by_id', ['id' => $shopId]).'"><b>'.htmlspecialchars($shopName, ENT_QUOTES, 'UTF-8').'</b></a></p>';
+                }
+                return '<p><b>'.htmlspecialchars($shopName, ENT_QUOTES, 'UTF-8').'</b></p>';
+            } catch (\Exception $e) {
+                Log::error('Error parsing shopdetails: ' . $e->getMessage(), [
+                    'raw_value' => is_string($order->shopdetails) ? substr($order->shopdetails, 0, 200) : gettype($order->shopdetails)
+                ]);
+                return '<p><b>N/A</b></p>';
+            }
+        })
+        ->editColumn('date',function ($order)
+        {
+            if (isset($order->date)) {
+                return $order->date;
+            } elseif (isset($order->created_at)) {
+                return date('d-m-Y', strtotime($order->created_at));
+            } elseif (isset($order->order_date)) {
+                return date('d-m-Y', strtotime($order->order_date));
+            }
+            return 'N/A';
+        })
+        ->editColumn('action',function ($order)
+        {
+            $orderId = isset($order->id) ? $order->id : '0';
+            $details = '<div class="dropdown">
+							<button type="button" class="btn btn-success light sharp" data-bs-toggle="dropdown">
+								<svg width="20px" height="20px" viewBox="0 0 24 24" version="1.1"><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><rect x="0" y="0" width="24" height="24"/><circle fill="#000000" cx="5" cy="12" r="2"/><circle fill="#000000" cx="12" cy="12" r="2"/><circle fill="#000000" cx="19" cy="12" r="2"/></g></svg>
+							</button>
+							<div class="dropdown-menu">
+								<a class="dropdown-item" href="javascript:;" onclick="large_modal('.$orderId.','."'view_order_details'".')"  data-bs-toggle="modal" data-bs-target=".bd-example-modal-lg">View Order Details</a>
+								<a class="dropdown-item" href="#">Delete</a>
+							</div>
+						</div>';
+
+            return $details;
+        })
+        ->rawColumns(['customerdetails' ,'status' ,'shopdetails' ,'action','callStatus'])
+        ->make(true);
+        } catch (\Exception $e) {
+            Log::error('❌ DataTables error in view_orders: ' . $e->getMessage(), [
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // Return empty DataTables response on error
+            return datatables()->of(collect([]))
+                ->addIndexColumn()
+                ->make(true);
+        }
+    }
+    public function view_order_details($id)
+    {
+        Log::info('🔵 CustomerController::view_order_details called', ['id' => $id]);
+        $apiResponse = $this->nodeApi->get('/customer/order/' . $id);
+        
+        Log::info('🔵 view_order_details Response', [
+            'status' => $apiResponse['status'] ?? 'unknown',
+            'hasData' => isset($apiResponse['data']),
+            'response' => $apiResponse
+        ]);
+        
+        $data = [
+            'order' => null,
+            'deliveryBoy' => null,
+            'pagename' => 'orders details'
+        ];
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $order = (object)$apiResponse['data'];
+            $data['order'] = $order;
+            
+            // Parse customerdetails if it's a string
+            if (isset($order->customerdetails) && is_string($order->customerdetails)) {
+                try {
+                    $json = json_decode($order->customerdetails, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+                        $order->customerdetails = (object)$json;
+                    } else {
+                        $cleaned = stripslashes($order->customerdetails);
+                        $json = json_decode($cleaned, true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+                            $order->customerdetails = (object)$json;
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Error parsing customerdetails: ' . $e->getMessage());
+                }
+            }
+            
+            // Parse shopdetails if it's a string
+            if (isset($order->shopdetails) && is_string($order->shopdetails)) {
+                try {
+                    $json = json_decode($order->shopdetails, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+                        $order->shopdetails = (object)$json;
+                    } else {
+                        $cleaned = stripslashes($order->shopdetails);
+                        $json = json_decode($cleaned, true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+                            $order->shopdetails = (object)$json;
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Error parsing shopdetails: ' . $e->getMessage());
+                }
+            }
+            
+            // Fetch delivery boy details if delivery boy ID exists
+            $delvBoyId = $order->delv_boy_id ?? $order->delv_id ?? null;
+            if ($delvBoyId) {
+                try {
+                    $delvBoyResponse = $this->nodeApi->get('/agent/delivery-boy/' . $delvBoyId);
+                    if ($delvBoyResponse['status'] === 'success' && isset($delvBoyResponse['data'])) {
+                        $data['deliveryBoy'] = (object)$delvBoyResponse['data'];
+                        Log::info('✅ view_order_details: Successfully retrieved delivery boy data');
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Error fetching delivery boy: ' . $e->getMessage());
+                }
+            }
+            
+            Log::info('✅ view_order_details: Successfully retrieved order data');
+            return view('customers/view_order_details', $data);
+        } else {
+            Log::error('❌ Node API failed for view_order_details', ['response' => $apiResponse]);
+            return view('customers/view_order_details', $data);
+        }
+    }
+    
+    public function del_customer($id)
+    {
+        Log::info('🔵 CustomerController::del_customer called', ['id' => $id]);
+        $apiResponse = $this->nodeApi->delete('/customer/' . $id);
+        
+        Log::info('🔵 del_customer Response', ['status' => $apiResponse['status'] ?? 'unknown', 'response' => $apiResponse]);
+        
+        if ($apiResponse['status'] === 'success') {
+            Log::info('✅ del_customer: Customer deleted successfully');
+            return Redirect::back()->with('success','Delete successfully!');
+        } else {
+            Log::error('❌ del_customer: Failed to delete customer', ['response' => $apiResponse]);
+            return Redirect::back()->with('error', $apiResponse['msg'] ?? 'Data Not Found');
+        }
+    }
+
+    public function show_recent_orders($id = '')
+    {
+        Log::info('🔵 CustomerController::show_recent_orders called', ['id' => $id]);
+        $apiResponse = $this->nodeApi->get('/customer/recent-orders/' . $id);
+        
+        Log::info('🔵 show_recent_orders Response', [
+            'status' => $apiResponse['status'] ?? 'unknown',
+            'hasData' => isset($apiResponse['data']),
+            'dataCount' => isset($apiResponse['data']) ? count($apiResponse['data']) : 0,
+            'response' => $apiResponse
+        ]);
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data']) && !empty($apiResponse['data'])) {
+            $orders = collect($apiResponse['data'])->map(function($order) {
+                return (object)$order;
+            });
+            Log::info('✅ show_recent_orders: Successfully retrieved recent orders', ['count' => $orders->count()]);
+            
+            $display = '<div class="d-flex align-items-center">
+                                <table class="table table-sm table-bordered">
+                                    <tr>
+                                        <th>Order Id</th>  
+                                        <th>Order Date</th>
+                                        <th>Shop Name</th>
+                                        <th>Status</th> 
+                                    </tr>';
+            foreach ($orders as $order) {
+                $display .= '<tr>
+                                    <td>'.$order->order_number.'</td>
+                                    <td>'.date('d-m-Y', strtotime($order->created_at)).'</td>
+                                    <td>'.($order->shop_name ?? 'N/A').'</td>
+                                    <td>';
+                if ($order->status == 1) { 
+                    $display .= 'Order Placed'; 
+                } elseif ($order->status == 2) { 
+                    $display .= 'Shop Accepted'; 
+                } elseif ($order->status == 3) { 
+                    $display .= 'Delivery Boy Assigned'; 
+                } else { 
+                    $display .= 'Completed'; 
+                } 
+                $display .= '</td>
+                                </tr>';
+            }
+            $display .= '</table>
+                        </div>';
+        } else {
+            Log::info('⚠️ show_recent_orders: No orders found');
+            $display = '<h4 class="text-center text-danger">No Orders Found</h4>';
+        }
+
+        echo $display;
+    }
+
+
+
+}
+
                     if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
                         // Successfully decoded JSON
                         $shopId = $json['shop_id'] ?? ($json['id'] ?? null);
