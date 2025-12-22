@@ -115,6 +115,180 @@ class CategoryController extends Controller
     }
 
     /**
+     * Create new category
+     */
+    public function store(Request $request)
+    {
+        try {
+            Log::info('📥 [ADMIN PANEL] Create Category Request Received', [
+                'request_method' => $request->method(),
+                'all_inputs' => $request->all(),
+                'has_file_category_image' => $request->hasFile('category_image'),
+                'has_category_img' => $request->has('category_img'),
+                'category_name' => $request->input('category_name'),
+                'category_img_url' => $request->input('category_img'),
+                'files' => $_FILES
+            ]);
+
+            // Check for file upload errors
+            if (isset($_FILES['category_image']) && $_FILES['category_image']['error'] !== UPLOAD_ERR_OK) {
+                $uploadError = $_FILES['category_image']['error'];
+                
+                $uploadMaxFilesize = ini_get('upload_max_filesize');
+                $postMaxSize = ini_get('post_max_size');
+                
+                $errorMessage = 'File upload failed: ';
+                switch ($uploadError) {
+                    case UPLOAD_ERR_INI_SIZE:
+                        $errorMessage .= "File exceeds PHP upload limit ({$uploadMaxFilesize}). ";
+                        break;
+                    case UPLOAD_ERR_FORM_SIZE:
+                        $errorMessage .= "File exceeds form upload limit. ";
+                        break;
+                    case UPLOAD_ERR_PARTIAL:
+                        $errorMessage .= 'The uploaded file was only partially uploaded';
+                        break;
+                    case UPLOAD_ERR_NO_FILE:
+                        $errorMessage .= 'No file was uploaded';
+                        break;
+                    default:
+                        $errorMessage .= 'Unknown error code: ' . $uploadError;
+                        break;
+                }
+                
+                if ($uploadError !== UPLOAD_ERR_NO_FILE) {
+                    Log::error('❌ [ADMIN PANEL] File Upload Error', [
+                        'error_code' => $uploadError,
+                        'message' => $errorMessage
+                    ]);
+                    return redirect()->back()->with('error', $errorMessage);
+                }
+            }
+            
+            $validationRules = [
+                'category_name' => 'required|string|max:255',
+                'category_img' => 'nullable|string|max:2000',
+            ];
+            
+            if ($request->hasFile('category_image') && $request->file('category_image')->isValid()) {
+                $validationRules['category_image'] = 'required|image|mimes:jpeg,jpg,png,gif|max:10240';
+            } else {
+                $validationRules['category_image'] = 'nullable';
+            }
+            
+            $request->validate($validationRules);
+
+            $data = [
+                'category_name' => $request->input('category_name'),
+            ];
+
+            $fileField = null;
+            $filePath = null;
+            
+            if ($request->hasFile('category_image')) {
+                $file = $request->file('category_image');
+                $filePath = $file->getRealPath();
+                $fileField = 'category_image';
+                $fileSize = $file->getSize();
+                $originalFileName = $file->getClientOriginalName();
+                
+                Log::info('📤 [ADMIN PANEL] File upload detected for new category', [
+                    'original_file_name' => $originalFileName,
+                    'temp_file_path' => $filePath,
+                    'file_size' => $fileSize,
+                    'file_size_mb' => round($fileSize / 1024 / 1024, 2),
+                    'mime_type' => $file->getMimeType()
+                ]);
+                
+                $MIN_FILE_SIZE = 100;
+                if ($fileSize < $MIN_FILE_SIZE) {
+                    Log::error('❌ [ADMIN PANEL] File too small - rejecting upload');
+                    return redirect()->route('categories', ['clear_cache' => 1])
+                        ->with('error', "File is too small ({$fileSize} bytes). Minimum required: {$MIN_FILE_SIZE} bytes.");
+                }
+                
+                $fileContent = file_get_contents($filePath);
+                $firstBytes = substr($fileContent, 0, 4);
+                $isValidImage = false;
+                $detectedFormat = null;
+                
+                if ($firstBytes === "\x89\x50\x4E\x47") {
+                    $isValidImage = true;
+                    $detectedFormat = 'PNG';
+                } elseif (substr($firstBytes, 0, 3) === "\xFF\xD8\xFF") {
+                    $isValidImage = true;
+                    $detectedFormat = 'JPEG';
+                } elseif (substr($firstBytes, 0, 3) === "GIF") {
+                    $isValidImage = true;
+                    $detectedFormat = 'GIF';
+                } elseif (substr($firstBytes, 0, 4) === "RIFF") {
+                    $isValidImage = true;
+                    $detectedFormat = 'WebP';
+                }
+                
+                if (!$isValidImage) {
+                    Log::error('❌ [ADMIN PANEL] Invalid image file - rejecting upload');
+                    return redirect()->route('categories', ['clear_cache' => 1])
+                        ->with('error', 'Invalid image file. Please upload a valid PNG, JPEG, GIF, or WebP image.');
+                }
+                
+                $originalSizeBeforeCompression = $fileSize;
+                $filePath = \App\Helpers\ImageCompressor::compressImage($filePath, $originalFileName);
+                $fileSizeAfterCompression = filesize($filePath);
+                
+                Log::info('📎 [ADMIN PANEL] File Upload Detected, Validated & Compressed', [
+                    'file_name' => $file->getClientOriginalName(),
+                    'original_size_bytes' => $originalSizeBeforeCompression,
+                    'compressed_size_bytes' => $fileSizeAfterCompression,
+                    'image_format' => $detectedFormat
+                ]);
+            } elseif ($request->has('category_img')) {
+                $data['category_img'] = $request->input('category_img');
+                Log::info('🔗 [ADMIN PANEL] Image URL Provided (No File Upload)');
+            }
+
+            if ($fileField && $filePath) {
+                $originalFileName = isset($file) ? $file->getClientOriginalName() : basename($filePath);
+                Log::info('🚀 [ADMIN PANEL] Calling Node.js API - POST Multipart with File');
+                $response = $this->nodeApi->postMultipart("/category_img_keywords", $data, $fileField, $filePath, $originalFileName);
+            } else {
+                Log::info('🚀 [ADMIN PANEL] Calling Node.js API - POST without File');
+                $response = $this->nodeApi->post("/category_img_keywords", $data);
+            }
+
+            Log::info('📥 [ADMIN PANEL] Node.js API Response Received', [
+                'response_status' => $response['status'] ?? 'unknown',
+                'response_message' => $response['msg'] ?? 'N/A'
+            ]);
+
+            if (isset($response['status']) && $response['status'] === 'success') {
+                $this->nodeApi->clearCache('/category_img_list');
+                $this->nodeApi->clearCache('/subcategories/grouped');
+                Cache::flush();
+                
+                Log::info('✅ Category created successfully');
+                return redirect()->route('categories', ['clear_cache' => 1])
+                    ->with('success', 'Category created successfully!');
+            } else {
+                $errorMsg = $response['msg'] ?? 'Unknown error occurred';
+                Log::error('❌ [ADMIN PANEL] Category creation failed', [
+                    'response_status' => $response['status'] ?? 'unknown',
+                    'response_msg' => $errorMsg
+                ]);
+                return redirect()->route('categories', ['clear_cache' => 1])
+                    ->with('error', $errorMsg);
+            }
+        } catch (\Exception $e) {
+            Log::error('❌ [ADMIN PANEL] Exception creating category', [
+                'error_message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->route('categories', ['clear_cache' => 1])
+                ->with('error', 'An error occurred while creating the category: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Update main category
      */
     public function updateCategory(Request $request, $id)
@@ -709,6 +883,11 @@ class CategoryController extends Controller
             $response = $this->nodeApi->delete("/subcategories/{$id}");
 
             if (isset($response['status']) && $response['status'] === 'success') {
+                // Clear cache
+                $this->nodeApi->clearCache('/category_img_list');
+                $this->nodeApi->clearCache('/subcategories/grouped');
+                Cache::flush();
+                
                 return redirect()->route('categories')->with('success', 'Subcategory deleted successfully!');
             } else {
                 return redirect()->route('categories')->with('error', $response['msg'] ?? 'Failed to delete subcategory.');
@@ -716,6 +895,31 @@ class CategoryController extends Controller
         } catch (\Exception $e) {
             Log::error('Error deleting subcategory: ' . $e->getMessage());
             return redirect()->route('categories')->with('error', 'An error occurred while deleting the subcategory.');
+        }
+    }
+
+    /**
+     * Delete category
+     */
+    public function destroy($id)
+    {
+        try {
+            $response = $this->nodeApi->delete("/category_img_keywords/{$id}");
+
+            if (isset($response['status']) && $response['status'] === 'success') {
+                // Clear cache
+                $this->nodeApi->clearCache('/category_img_list');
+                $this->nodeApi->clearCache('/subcategories/grouped');
+                Cache::flush();
+                
+                return redirect()->route('categories')->with('success', 'Category deleted successfully!');
+            } else {
+                $errorMsg = $response['msg'] ?? 'Failed to delete category.';
+                return redirect()->route('categories')->with('error', $errorMsg);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error deleting category: ' . $e->getMessage());
+            return redirect()->route('categories')->with('error', 'An error occurred while deleting the category: ' . $e->getMessage());
         }
     }
 }

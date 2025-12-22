@@ -318,6 +318,27 @@ class AgentController extends Controller
             $data['category'] = collect($data['category'] ?? [])->map(function($cat) {
                 return (object)$cat;
             });
+            
+            // Fetch products for each category from Node API
+            $shopId = $data['shop']->id ?? $id;
+            $categoryProducts = [];
+            foreach ($data['category'] as $cat) {
+                try {
+                    $productsResponse = $this->nodeApi->get('/shop_item_list/' . $shopId . '/' . ($cat->id ?? $cat->cat_id ?? ''));
+                    if ($productsResponse['status'] === 'success' && isset($productsResponse['data'])) {
+                        $categoryProducts[$cat->id ?? $cat->cat_id ?? ''] = collect($productsResponse['data'])->map(function($product) {
+                            return (object)$product;
+                        });
+                    } else {
+                        $categoryProducts[$cat->id ?? $cat->cat_id ?? ''] = collect([]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Error fetching products for category ' . ($cat->id ?? $cat->cat_id ?? '') . ': ' . $e->getMessage());
+                    $categoryProducts[$cat->id ?? $cat->cat_id ?? ''] = collect([]);
+                }
+            }
+            $data['categoryProducts'] = $categoryProducts;
+            
             $data['pagename'] = 'Vendor Profile';
             Log::info('✅ shop_view_by_id: Successfully retrieved shop data');
             return view('agent/shop_view_by_id', $data);

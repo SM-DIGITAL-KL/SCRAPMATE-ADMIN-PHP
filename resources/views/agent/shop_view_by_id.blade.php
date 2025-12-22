@@ -124,7 +124,9 @@
                 <div class="card h-auto">
                     <div class="card-body p-4">
                         <?php foreach ($category as $c) {
-                            $items = DB::table('products')->where('cat_id', $c->id)->where('shop_id', $c->shop_id)->get();?>
+                            // Get products from categoryProducts array (fetched from Node API)
+                            $catId = $c->id ?? $c->cat_id ?? '';
+                            $items = $categoryProducts[$catId] ?? collect([]);?>
                         <div class="accordion accordion-active-header" id="accordion-{{$c->id}}">
                             <div class="accordion-item">
                                 <div class="accordion-header  rounded-lg" id="accord-{{$c->id}}" data-bs-toggle="collapse" data-bs-target="#collapse{{$c->id}}" aria-controls="collapse{{$c->id}}"   @if($c->id == $category->first()->id) aria-expanded="true" @endif  role="button">
@@ -151,8 +153,8 @@
                                             <tbody>';
                                             foreach ($items as $i) {
                                                 echo '<tr>
-                                                    <td>'.$i->name.'</td>
-                                                    <td>'.$i->amout.'</td>
+                                                    <td>'.($i->name ?? 'N/A').'</td>
+                                                    <td>'.($i->amout ?? $i->amount ?? 'N/A').'</td>
                                                 </tr>';
                                             }
                                             echo '</tbody>
