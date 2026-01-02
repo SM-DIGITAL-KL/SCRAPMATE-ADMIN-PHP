@@ -42,10 +42,14 @@ Route::middleware(['authusers'])->group(function () {
     Route::put('/categories/{id}', [CategoryController::class, 'updateCategory'])->name('categories.update');
     Route::delete('/categories/{id}', [CategoryController::class, 'destroy'])->name('categories.destroy');
     
+    // Pending Subcategory Requests
+    Route::get('/pending-categories', [CategoryController::class, 'pendingCategories'])->name('pendingCategories');
+    
     // Subcategories (handled by CategoryController)
     Route::post('/subcategories', [CategoryController::class, 'createSubcategory'])->name('createSubcategory');
     Route::post('/subcategories/{id}', [CategoryController::class, 'updateSubcategory'])->name('updateSubcategory');
     Route::get('/subcategories/{id}/delete', [CategoryController::class, 'deleteSubcategory'])->name('deleteSubcategory');
+    Route::post('/subcategories/{id}/approve', [CategoryController::class, 'approveRejectSubcategory'])->name('approveRejectSubcategory');
 
     // Users
     Route::get('/users', [\App\Http\Controllers\AdminController::class, 'users'])->name('users');
@@ -65,6 +69,11 @@ Route::middleware(['authusers'])->group(function () {
     Route::get('/b2cUsers', [\App\Http\Controllers\AdminController::class, 'b2cUsers'])->name('b2cUsers');
     Route::get('/b2cUserDocuments/{userId}', [\App\Http\Controllers\AdminController::class, 'viewB2CUserDocuments'])->name('b2cUserDocuments');
     Route::post('/b2cUsers/{userId}/approval-status', [\App\Http\Controllers\AdminController::class, 'updateB2CApprovalStatus'])->name('updateB2CApprovalStatus');
+
+    // SR Users (Shop + Recycler)
+    Route::get('/srUsers', [\App\Http\Controllers\AdminController::class, 'srUsers'])->name('srUsers');
+    Route::get('/srUserDocuments/{userId}', [\App\Http\Controllers\AdminController::class, 'viewSRUserDocuments'])->name('srUserDocuments');
+    Route::post('/srUsers/{userId}/approval-status', [\App\Http\Controllers\AdminController::class, 'updateSRApprovalStatus'])->name('updateSRApprovalStatus');
 
     // Delivery Users
     Route::get('/deliveryUsers', [\App\Http\Controllers\AdminController::class, 'deliveryUsers'])->name('deliveryUsers');
@@ -98,14 +107,38 @@ Route::middleware(['authusers'])->group(function () {
     Route::post('/check_distance', [\App\Http\Controllers\AdminController::class, 'check_distance'])->name('check_distance');
     Route::get('/callLogSearch', [\App\Http\Controllers\AdminController::class, 'callLogSearch'])->name('callLogSearch');
     Route::get('/getcallLogSearch', [\App\Http\Controllers\AdminController::class, 'getcallLogSearch'])->name('getcallLogSearch');
+    
+    // Cache Management
+    Route::get('/cacheManagement', [\App\Http\Controllers\AdminController::class, 'cacheManagement'])->name('cacheManagement');
+    Route::post('/admin/cache/clear', [\App\Http\Controllers\AdminController::class, 'clearCache'])->name('clearCache');
 
     // Subscription Packages
     Route::get('/subscriptionPackages', [\App\Http\Controllers\AdminController::class, 'subscriptionPackages'])->name('subscriptionPackages');
     Route::match(['post', 'put', 'delete'], '/subscriptionPackages/{id}', [\App\Http\Controllers\AdminController::class, 'updateSubscriptionPackage'])->name('updateSubscriptionPackage');
     
+    // Sub Packages (AccountsController routes)
+    Route::get('/subPackages', [AccountsController::class, 'subPackages'])->name('subPackages.index');
+    Route::match(['get', 'post'], '/subPackages/create', [AccountsController::class, 'createSubPackage'])->name('subPackages.create');
+    Route::post('/subPackages/new', [AccountsController::class, 'createSubPackage'])->name('subPackages.new');
+    Route::match(['get', 'post'], '/subPackages/{id}/edit', [AccountsController::class, 'editSubPackage'])->name('subPackages.edit');
+    Route::match(['post', 'put', 'patch'], '/subPackages/{id}', [AccountsController::class, 'editSubPackage'])->name('subPackages.update');
+    Route::get('/delSubPackage/{id}', [AccountsController::class, 'delSubPackage'])->name('subPackages.delete');
+    Route::post('/updateSubPackageStatus', [AccountsController::class, 'updateSubPackageStatus'])->name('subPackages.updateStatus');
+    
     // Subscribers List
     Route::get('/subcribersList', [AccountsController::class, 'subcribersList'])->name('subcribersList.index');
     Route::get('/view_subcribersList', [AccountsController::class, 'view_subcribersList'])->name('view_subcribersList');
+    
+    // Paid Subscriptions Management
+    Route::get('/paidSubscriptions', [AccountsController::class, 'paidSubscriptions'])->name('paidSubscriptions.index');
+    Route::get('/view_paidSubscriptions', [AccountsController::class, 'viewPaidSubscriptions'])->name('view_paidSubscriptions');
+    Route::post('/subscriptionApproval', [AccountsController::class, 'updateSubscriptionApproval'])->name('subscriptionApproval');
+    Route::post('/paidSubscriptions', [AccountsController::class, 'receivePaymentTransaction'])->name('paidSubscriptions.receiveTransaction');
+    
+    // Pending Bulk Buy Orders Management
+    Route::get('/pendingBulkBuyOrders', [AccountsController::class, 'pendingBulkBuyOrders'])->name('pendingBulkBuyOrders.index');
+    Route::get('/view_pendingBulkBuyOrders', [AccountsController::class, 'viewPendingBulkBuyOrders'])->name('view_pendingBulkBuyOrders');
+    Route::post('/pendingBulkBuyOrderApproval', [AccountsController::class, 'updatePendingBulkBuyOrderApproval'])->name('pendingBulkBuyOrderApproval');
 
     // Site Management
     Route::match(['get', 'post'], '/manage_site', [SiteController::class, 'manage_site'])->name('manage_site');

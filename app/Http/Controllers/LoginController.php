@@ -53,7 +53,7 @@ class LoginController extends Controller
             // Read from env.txt first, fallback to .env, then env() helper
             // NODE_URL should be the base server URL (AWS Lambda Function URL)
             // Default to production Lambda Function URL if not configured
-            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
             $loginUrl = rtrim($nodeUrl, '/') . '/dologin';
             
             // Get API key from environment (read from env.txt)
@@ -263,7 +263,7 @@ class LoginController extends Controller
             }
         } catch (\Exception $e) {
             // Default to production Lambda Function URL if not configured
-            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
             $loginUrl = rtrim($nodeUrl, '/') . '/dologin';
             
             $errorDetails = [

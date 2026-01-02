@@ -451,6 +451,205 @@ class AdminController extends Controller
         }
     }
 
+    public function srUsers(Request $request)
+    {
+        // Reduced logging for performance
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 10);
+        $search = $request->get('search', '');
+        
+        $params = [
+            'page' => $page,
+            'limit' => $limit
+        ];
+        
+        if (!empty($search)) {
+            $params['search'] = $search;
+        }
+        
+        // Clear PHP cache for this endpoint to ensure fresh data
+        $cacheKey = 'node_api:' . md5('/admin/sr-users' . serialize($params));
+        Cache::forget($cacheKey);
+        
+        // Add cache-busting parameter to force fresh data from Node API
+        $params['_t'] = time(); // Timestamp to bypass cache
+        
+        $apiResponse = $this->nodeApi->get('/admin/sr-users', $params);
+        
+        // Log the response for debugging
+        Log::info('SR Users API Response', [
+            'status' => $apiResponse['status'] ?? 'unknown',
+            'has_data' => isset($apiResponse['data']),
+            'users_count' => isset($apiResponse['data']['users']) ? count($apiResponse['data']['users']) : 0,
+            'total' => $apiResponse['data']['total'] ?? 0
+        ]);
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $data = $apiResponse['data'];
+            // Convert users array to collection of objects
+            if (isset($data['users']) && is_array($data['users'])) {
+                $data['users'] = collect($data['users'])->map(function($user) {
+                    return (object)$user;
+                });
+            } else {
+                $data['users'] = collect([]);
+            }
+            
+            $data['pagename'] = 'SR Users';
+            return view('admin/srUsers', $data);
+        } else {
+            Log::error('Node API failed for srUsers', ['response' => $apiResponse]);
+            $data = [
+                'pagename' => 'SR Users',
+                'users' => collect([]),
+                'total' => 0,
+                'page' => 1,
+                'limit' => 10,
+                'totalPages' => 0,
+                'hasMore' => false
+            ];
+            return view('admin/srUsers', $data);
+        }
+    }
+
+    public function viewSRUserDocuments(Request $request, $userId)
+    {
+        Log::info('AdminController::viewSRUserDocuments called', ['userId' => $userId]);
+        
+        // Clear cache for this specific user to ensure fresh data
+        $cacheKey = 'node_api:' . md5('/admin/sr-users/' . $userId);
+        Cache::forget($cacheKey);
+        
+        $apiResponse = $this->nodeApi->get("/admin/sr-users/{$userId}");
+        
+        Log::info('SR User Documents API Response', [
+            'status' => $apiResponse['status'] ?? 'unknown',
+            'hasData' => isset($apiResponse['data']),
+            'hasShop' => isset($apiResponse['data']['shop']),
+            'hasB2BShop' => isset($apiResponse['data']['b2bShop']),
+            'hasB2CShop' => isset($apiResponse['data']['b2cShop']),
+            'b2bShopType' => isset($apiResponse['data']['b2bShop']) ? gettype($apiResponse['data']['b2bShop']) : 'not set',
+            'b2cShopType' => isset($apiResponse['data']['b2cShop']) ? gettype($apiResponse['data']['b2cShop']) : 'not set',
+            'shopType' => isset($apiResponse['data']['shop']) ? gettype($apiResponse['data']['shop']) : 'not set'
+        ]);
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $userDataArray = $apiResponse['data'];
+            
+            // Convert to object and ensure shop is also an object
+            $userData = (object)$userDataArray;
+            
+            // Handle shop (for backward compatibility)
+            if (isset($userDataArray['shop']) && $userDataArray['shop'] !== null) {
+                if (is_array($userDataArray['shop'])) {
+                    $userData->shop = (object)$userDataArray['shop'];
+                } else {
+                    $userData->shop = $userDataArray['shop'];
+                }
+            } else {
+                $userData->shop = null;
+            }
+            
+            // Handle separate B2B and B2C shops
+            if (isset($userDataArray['b2bShop']) && $userDataArray['b2bShop'] !== null) {
+                if (is_array($userDataArray['b2bShop'])) {
+                    $userData->b2bShop = (object)$userDataArray['b2bShop'];
+                } else {
+                    $userData->b2bShop = $userDataArray['b2bShop'];
+                }
+            } else {
+                $userData->b2bShop = null;
+            }
+            
+            if (isset($userDataArray['b2cShop']) && $userDataArray['b2cShop'] !== null) {
+                if (is_array($userDataArray['b2cShop'])) {
+                    $userData->b2cShop = (object)$userDataArray['b2cShop'];
+                } else {
+                    $userData->b2cShop = $userDataArray['b2cShop'];
+                }
+            } else {
+                $userData->b2cShop = null;
+            }
+            
+            // If shop is not set but b2cShop or b2bShop exists, use the first available one for backward compatibility
+            if ((!isset($userData->shop) || !$userData->shop || $userData->shop === null) && 
+                (isset($userData->b2cShop) && $userData->b2cShop !== null)) {
+                $userData->shop = $userData->b2cShop;
+            } elseif ((!isset($userData->shop) || !$userData->shop || $userData->shop === null) && 
+                      (isset($userData->b2bShop) && $userData->b2bShop !== null)) {
+                $userData->shop = $userData->b2bShop;
+            }
+            
+            // Extract srApprovalStatus from API response
+            if (isset($userDataArray['srApprovalStatus'])) {
+                $userData->srApprovalStatus = $userDataArray['srApprovalStatus'];
+            }
+            
+            // Log for debugging
+            Log::info('SR User Documents - Shop data', [
+                'hasShop' => isset($userData->shop) && $userData->shop !== null,
+                'hasB2BShop' => isset($userData->b2bShop) && $userData->b2bShop !== null,
+                'hasB2CShop' => isset($userData->b2cShop) && $userData->b2cShop !== null,
+                'b2bShopId' => $userData->b2bShop->id ?? null,
+                'b2cShopId' => $userData->b2cShop->id ?? null,
+                'shopId' => $userData->shop->id ?? null,
+                'b2bApprovalStatus' => $userData->b2bShop->approval_status ?? null,
+                'b2cApprovalStatus' => $userData->b2cShop->approval_status ?? null,
+                'srApprovalStatus' => $userData->srApprovalStatus ?? null
+            ]);
+            
+            $data = [
+                'pagename' => 'SR User Details',
+                'user' => $userData
+            ];
+            return view('admin/srUserDocuments', $data);
+        } else {
+            Log::error('Node API failed for viewSRUserDocuments', ['response' => $apiResponse]);
+            return redirect()->route('srUsers')->with('error', 'Failed to load user details');
+        }
+    }
+
+    public function updateSRApprovalStatus(Request $request, $userId)
+    {
+        Log::info('AdminController::updateSRApprovalStatus called', [
+            'userId' => $userId,
+            'approval_status' => $request->input('approval_status'),
+            'rejection_reason' => $request->input('rejection_reason'),
+            'shop_type' => $request->input('shop_type')
+        ]);
+        
+        $approvalStatus = $request->input('approval_status');
+        $shopType = $request->input('shop_type'); // 'b2b', 'b2c', or null for both
+        
+        if (!in_array($approvalStatus, ['approved', 'rejected', 'pending'])) {
+            return redirect()->back()->with('error', 'Invalid approval status');
+        }
+        
+        $apiData = [
+            'approval_status' => $approvalStatus
+        ];
+        
+        // Add shop_type if specified
+        if ($shopType) {
+            $apiData['shop_type'] = $shopType;
+        }
+        
+        // Add rejection reason if status is rejected
+        if ($approvalStatus === 'rejected' && $request->has('rejection_reason')) {
+            $apiData['rejection_reason'] = $request->input('rejection_reason');
+        }
+        
+        $apiResponse = $this->nodeApi->post("/admin/sr-users/{$userId}/approval-status", $apiData);
+        
+        if ($apiResponse['status'] === 'success') {
+            $shopTypeLabel = $shopType ? strtoupper($shopType) : 'SR';
+            return redirect()->back()->with('success', "{$shopTypeLabel} approval status updated to {$approvalStatus}");
+        } else {
+            Log::error('Node API failed for updateSRApprovalStatus', ['response' => $apiResponse]);
+            return redirect()->back()->with('error', 'Failed to update approval status');
+        }
+    }
+
     public function viewB2BUserDocuments(Request $request, $userId)
     {
         Log::info('AdminController::viewB2BUserDocuments called', ['userId' => $userId]);
@@ -574,10 +773,24 @@ class AdminController extends Controller
         
         $apiResponse = $this->nodeApi->post("/admin/b2c-users/{$userId}/approval-status", $apiData);
         
-        if ($apiResponse['status'] === 'success') {
+        // Log the response for debugging
+        Log::info('AdminController::updateB2CApprovalStatus response', [
+            'userId' => $userId,
+            'response' => $apiResponse,
+            'response_status' => $apiResponse['status'] ?? 'not_set',
+            'response_type' => gettype($apiResponse)
+        ]);
+        
+        // Check if response is valid and has success status
+        if (isset($apiResponse['status']) && $apiResponse['status'] === 'success') {
             return redirect()->back()->with('success', "B2C approval status updated to {$approvalStatus}");
         } else {
-            Log::error('Node API failed for updateB2CApprovalStatus', ['response' => $apiResponse]);
+            Log::error('Node API failed for updateB2CApprovalStatus', [
+                'userId' => $userId,
+                'response' => $apiResponse,
+                'response_status' => $apiResponse['status'] ?? 'not_set',
+                'response_msg' => $apiResponse['msg'] ?? 'no message'
+            ]);
             return redirect()->back()->with('error', 'Failed to update approval status');
         }
     }
@@ -773,7 +986,7 @@ class AdminController extends Controller
         Log::info('🔵 AdminController::set_permission called', ['id' => $id]);
         $endpoint = '/admin/set_permission' . ($id ? '/' . $id : '');
         // Default to production Lambda Function URL if not configured
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
         $nodeApiUrl = rtrim($nodeUrl, '/') . '/api';
         $fullUrl = $nodeApiUrl . $endpoint;
         Log::info('🔵 Calling Node.js API', [
@@ -1253,6 +1466,8 @@ class AdminController extends Controller
                 'upiId',
                 'merchantName',
                 'isActive',
+                'pricePercentage',
+                'isPercentageBased',
             ]);
             
             // Convert features string to array if needed
@@ -1270,9 +1485,21 @@ class AdminController extends Controller
                 $data['isActive'] = filter_var($data['isActive'], FILTER_VALIDATE_BOOLEAN);
             }
             
+            // Convert isPercentageBased to boolean
+            if (isset($data['isPercentageBased'])) {
+                $data['isPercentageBased'] = filter_var($data['isPercentageBased'], FILTER_VALIDATE_BOOLEAN);
+            }
+            
             // Convert price to number
             if (isset($data['price'])) {
                 $data['price'] = (float) $data['price'];
+            }
+            
+            // Convert pricePercentage to number if provided
+            if (isset($data['pricePercentage']) && $data['pricePercentage'] !== '') {
+                $data['pricePercentage'] = (float) $data['pricePercentage'];
+            } else {
+                unset($data['pricePercentage']);
             }
             
             // Handle CREATE (new package)
@@ -1312,6 +1539,67 @@ class AdminController extends Controller
             Log::error('Error managing subscription package: ' . $e->getMessage());
             return redirect()->route('subscriptionPackages')
                 ->with('error', 'Failed to manage subscription package: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Cache Management Page
+     */
+    public function cacheManagement()
+    {
+        $data = [
+            'pagename' => 'Cache Management'
+        ];
+        return view('admin/cacheManagement', $data);
+    }
+
+    /**
+     * Clear cache for specific user type
+     * POST /admin/cache/clear
+     */
+    public function clearCache(Request $request)
+    {
+        try {
+            $userType = $request->input('userType');
+            
+            if (!in_array($userType, ['b2b', 'b2c', 'sr', 'd', 'all'])) {
+                return response()->json([
+                    'status' => 'error',
+                    'msg' => 'Invalid user type. Must be one of: b2b, b2c, sr, d, all',
+                    'data' => null
+                ], 400);
+            }
+
+            // Call Node.js API to clear cache
+            $apiResponse = $this->nodeApi->post('/admin/cache/clear', [
+                'userType' => $userType
+            ]);
+
+            if ($apiResponse['status'] === 'success') {
+                Log::info('Cache cleared successfully', [
+                    'userType' => $userType,
+                    'deletedCount' => $apiResponse['data']['deletedCount'] ?? 0
+                ]);
+                
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => $apiResponse['msg'] ?? 'Cache cleared successfully',
+                    'data' => $apiResponse['data'] ?? null
+                ]);
+            } else {
+                return response()->json([
+                    'status' => 'error',
+                    'msg' => $apiResponse['msg'] ?? 'Failed to clear cache',
+                    'data' => null
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error clearing cache: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Failed to clear cache: ' . $e->getMessage(),
+                'data' => null
+            ], 500);
         }
     }
 }

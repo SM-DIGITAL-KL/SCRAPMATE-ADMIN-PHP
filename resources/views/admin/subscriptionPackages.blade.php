@@ -65,17 +65,29 @@
                                         
                                         <div class="card-body">
                                             <div class="text-center mb-3">
-                                                <h2 class="text-primary mb-0">
-                                                    ₹ {{ number_format($package['price'] ?? 0, 0) }}
-                                                </h2>
-                                                <p class="text-muted mb-0">
-                                                    / {{ ucfirst($package['duration'] ?? 'N/A') }}
-                                                    @if(isset($package['duration']) && $package['duration'] === 'order')
-                                                        + GST
-                                                    @else
-                                                        + GST
-                                                    @endif
-                                                </p>
+                                                @if(isset($package['isPercentageBased']) && $package['isPercentageBased'] && isset($package['pricePercentage']))
+                                                    <h2 class="text-primary mb-0">
+                                                        {{ number_format($package['pricePercentage'], 1) }}%
+                                                    </h2>
+                                                    <p class="text-muted mb-0">
+                                                        of order value
+                                                        @if(isset($package['duration']) && $package['duration'] === 'order')
+                                                            / {{ ucfirst($package['duration']) }}
+                                                        @endif
+                                                    </p>
+                                                @else
+                                                    <h2 class="text-primary mb-0">
+                                                        ₹ {{ number_format($package['price'] ?? 0, 0) }}
+                                                    </h2>
+                                                    <p class="text-muted mb-0">
+                                                        / {{ ucfirst($package['duration'] ?? 'N/A') }}
+                                                        @if(isset($package['duration']) && $package['duration'] === 'order')
+                                                            + GST
+                                                        @else
+                                                            + GST
+                                                        @endif
+                                                    </p>
+                                                @endif
                                             </div>
                                             
                                             @if(isset($package['description']) && !empty($package['description']))
@@ -157,14 +169,29 @@
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Price (₹) <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" name="price" id="edit_price" step="0.01" min="0" required>
+                            <small class="form-text text-muted">Set to 0 for percentage-based pricing</small>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Duration <span class="text-danger">*</span></label>
-                            <select class="form-select" name="duration" id="edit_duration" required>
+                            <select class="form-select" name="duration" id="edit_duration" required onchange="togglePercentageFields('edit')">
                                 <option value="month">Per Month</option>
                                 <option value="year">Per Year</option>
                                 <option value="order">Per Order</option>
                             </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row" id="edit_percentageFields" style="display: none;">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Price Percentage (%)</label>
+                            <input type="number" class="form-control" name="pricePercentage" id="edit_pricePercentage" step="0.1" min="0" max="100" placeholder="0.5">
+                            <small class="form-text text-muted">Percentage of order value (e.g., 0.5 for 0.5%)</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check form-switch mt-4">
+                                <input class="form-check-input" type="checkbox" name="isPercentageBased" value="1" id="edit_isPercentageBased">
+                                <label class="form-check-label" for="edit_isPercentageBased">Percentage-Based Pricing</label>
+                            </div>
                         </div>
                     </div>
                     
@@ -234,7 +261,7 @@
                 <h5 class="modal-title" id="addPackageModalLabel">Add New Subscription Package</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="addPackageForm" method="POST" action="{{ url('/subPackages/new') }}">
+            <form id="addPackageForm" method="POST" action="{{ url('/subscriptionPackages/new') }}">
                 @csrf
                 <div class="modal-body">
                     <div class="mb-3">
@@ -251,15 +278,30 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Price (₹) <span class="text-danger">*</span></label>
-                            <input type="number" class="form-control" name="price" step="0.01" min="0" required>
+                            <input type="number" class="form-control" name="price" id="add_price" step="0.01" min="0" required>
+                            <small class="form-text text-muted">Set to 0 for percentage-based pricing</small>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Duration <span class="text-danger">*</span></label>
-                            <select class="form-select" name="duration" required>
+                            <select class="form-select" name="duration" id="add_duration" required onchange="togglePercentageFields('add')">
                                 <option value="month">Per Month</option>
                                 <option value="year">Per Year</option>
                                 <option value="order">Per Order</option>
                             </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row" id="add_percentageFields" style="display: none;">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Price Percentage (%)</label>
+                            <input type="number" class="form-control" name="pricePercentage" id="add_pricePercentage" step="0.1" min="0" max="100" placeholder="0.5">
+                            <small class="form-text text-muted">Percentage of order value (e.g., 0.5 for 0.5%)</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check form-switch mt-4">
+                                <input class="form-check-input" type="checkbox" name="isPercentageBased" value="1" id="add_isPercentageBased">
+                                <label class="form-check-label" for="add_isPercentageBased">Percentage-Based Pricing</label>
+                            </div>
                         </div>
                     </div>
                     
@@ -404,12 +446,46 @@ function editPackage(packageId) {
     document.getElementById('edit_popular').checked = package.popular || false;
     document.getElementById('edit_isActive').checked = package.isActive !== false;
     
+    // Handle percentage-based pricing fields
+    if (package.pricePercentage !== undefined && package.pricePercentage !== null) {
+        document.getElementById('edit_pricePercentage').value = package.pricePercentage;
+    }
+    document.getElementById('edit_isPercentageBased').checked = package.isPercentageBased || false;
+    
+    // Toggle percentage fields visibility
+    togglePercentageFields('edit');
+    
     // Set form action
-    document.getElementById('editPackageForm').action = '{{ url("/subPackages") }}/' + packageId;
+    document.getElementById('editPackageForm').action = '{{ url("/subscriptionPackages") }}/' + packageId;
     
     // Show modal
     const modal = new bootstrap.Modal(document.getElementById('editPackageModal'));
     modal.show();
+}
+
+function togglePercentageFields(formType) {
+    const prefix = formType === 'edit' ? 'edit' : 'add';
+    const durationSelect = document.getElementById(prefix + '_duration');
+    const percentageFields = document.getElementById(prefix + '_percentageFields');
+    const priceInput = document.getElementById(prefix + '_price');
+    const percentageInput = document.getElementById(prefix + '_pricePercentage');
+    const isPercentageCheckbox = document.getElementById(prefix + '_isPercentageBased');
+    
+    if (durationSelect.value === 'order') {
+        percentageFields.style.display = 'block';
+        // If percentage-based is checked, set price to 0
+        if (isPercentageCheckbox.checked) {
+            priceInput.value = 0;
+            priceInput.required = false;
+        }
+    } else {
+        percentageFields.style.display = 'none';
+        priceInput.required = true;
+        if (formType === 'add') {
+            percentageInput.value = '';
+            isPercentageCheckbox.checked = false;
+        }
+    }
 }
 
 function deletePackage(packageId, packageName) {
@@ -420,7 +496,7 @@ function deletePackage(packageId, packageName) {
     // Create a form and submit DELETE request
     const form = document.createElement('form');
     form.method = 'POST';
-    form.action = '{{ url("/subPackages") }}/' + packageId;
+    form.action = '{{ url("/subscriptionPackages") }}/' + packageId;
     
     const csrfToken = document.createElement('input');
     csrfToken.type = 'hidden';

@@ -355,8 +355,34 @@ class CustomerController extends Controller
                 // Fallback: if still N/A and we have the raw value, try one more time
                 if ($shopName === 'N/A' && is_string($order->shopdetails) && strlen($order->shopdetails) > 0) {
                     // Maybe it's just a plain string name?
-                    if (strlen($order->shopdetails) < 100 && !str_contains($order->shopdetails, '{')) {
-                        $shopName = $order->shopdetails;
+                    // Extract shop name from plain string (format: "shopname, address, ...")
+                    if (!str_contains($order->shopdetails, '{') && !str_contains($order->shopdetails, '[')) {
+                        // Try to extract shop name (first part before comma)
+                        $parts = explode(',', $order->shopdetails);
+                        if (!empty($parts[0])) {
+                            $shopName = trim($parts[0]);
+                        } else {
+                            // If no comma, use the whole string (but limit length)
+                            $shopName = strlen($order->shopdetails) > 100 
+                                ? substr($order->shopdetails, 0, 100) . '...' 
+                                : $order->shopdetails;
+                        }
+                    }
+                }
+                
+                // Additional fallback: if we have shop_id but no shop name, try to fetch from API
+                if ($shopName === 'N/A' && isset($order->shop_id) && $order->shop_id) {
+                    try {
+                        // Try to get shop name from shop_id via API
+                        $shopResponse = $this->nodeApi->get('/agent/shop/' . $order->shop_id);
+                        if (isset($shopResponse['status']) && $shopResponse['status'] === 'success' 
+                            && isset($shopResponse['data']['shop']['shopname'])) {
+                            $shopName = $shopResponse['data']['shop']['shopname'];
+                            $shopId = $order->shop_id;
+                        }
+                    } catch (\Exception $apiErr) {
+                        // Silently fail - we'll just show N/A
+                        Log::debug('Could not fetch shop from API: ' . $apiErr->getMessage());
                     }
                 }
                 

@@ -922,4 +922,106 @@ class CategoryController extends Controller
             return redirect()->route('categories')->with('error', 'An error occurred while deleting the category: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Approve or reject a subcategory request
+     */
+    public function approveRejectSubcategory(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'action' => 'required|in:approve,reject',
+                'approval_notes' => 'nullable|string|max:500'
+            ]);
+
+            $data = [
+                'action' => $request->input('action'),
+                'approval_notes' => $request->input('approval_notes')
+            ];
+
+            // Get admin user ID from session
+            $adminUserId = session('user_id');
+            if ($adminUserId) {
+                $data['admin_user_id'] = $adminUserId;
+            }
+
+            $response = $this->nodeApi->post("/admin/subcategory-requests/{$id}/approve", $data);
+
+            if (isset($response['status']) && $response['status'] === 'success') {
+                // Clear cache to ensure updated subcategory is shown
+                $this->nodeApi->clearCache('/category_img_list');
+                $this->nodeApi->clearCache('/subcategories/grouped');
+                Cache::flush();
+                
+                $actionText = $request->input('action') === 'approve' ? 'approved' : 'rejected';
+                return redirect()->route('pendingCategories')
+                    ->with('success', "Subcategory request {$actionText} successfully!");
+            } else {
+                $errorMsg = $response['msg'] ?? 'Failed to process subcategory request.';
+                return redirect()->route('pendingCategories')->with('error', $errorMsg);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error approving/rejecting subcategory: ' . $e->getMessage());
+            return redirect()->route('categories')
+                ->with('error', 'An error occurred while processing the subcategory request: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Display pending subcategory requests page
+     */
+    public function pendingCategories(Request $request)
+    {
+        try {
+            // Clear cache first to ensure we get fresh data (pending requests change frequently)
+            try {
+                $this->nodeApi->clearCache('/admin/subcategory-requests/pending');
+                
+                // Use cache-busting parameter and shorter TTL since pending requests change frequently
+                $cacheBustingParams = ['t' => time(), 'nocache' => '1'];
+                $pendingRequestsResponse = $this->nodeApi->get('/admin/subcategory-requests/pending', $cacheBustingParams, 10);
+                $pendingRequests = [];
+                
+                Log::info('Pending Subcategory Requests API Response', [
+                    'response_status' => $pendingRequestsResponse['status'] ?? 'unknown',
+                    'data_count' => isset($pendingRequestsResponse['data']) && is_array($pendingRequestsResponse['data']) ? count($pendingRequestsResponse['data']) : 0,
+                    'has_data' => isset($pendingRequestsResponse['data']),
+                    'data_type' => isset($pendingRequestsResponse['data']) ? gettype($pendingRequestsResponse['data']) : 'not_set'
+                ]);
+                
+                if (isset($pendingRequestsResponse['status']) && $pendingRequestsResponse['status'] === 'success') {
+                    $pendingRequests = is_array($pendingRequestsResponse['data'] ?? []) ? $pendingRequestsResponse['data'] : [];
+                    Log::info('Pending requests fetched successfully', ['count' => count($pendingRequests)]);
+                } else {
+                    Log::warning('Pending subcategory requests API returned error', [
+                        'response' => $pendingRequestsResponse,
+                        'status' => $pendingRequestsResponse['status'] ?? 'unknown',
+                        'msg' => $pendingRequestsResponse['msg'] ?? 'No message'
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('Error fetching pending subcategory requests: ' . $e->getMessage(), [
+                    'trace' => $e->getTraceAsString()
+                ]);
+                $pendingRequests = []; // Set to empty array on error to prevent view errors
+            }
+
+            $data = [
+                'pagename' => 'Pending Subcategory Requests',
+                'pendingRequests' => $pendingRequests
+            ];
+
+            return view('admin/pendingCategories', $data);
+        } catch (\Exception $e) {
+            Log::error('Error loading pending categories page: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            $data = [
+                'pagename' => 'Pending Subcategory Requests',
+                'pendingRequests' => [],
+                'error' => 'Failed to load pending requests: ' . $e->getMessage()
+            ];
+            return view('admin/pendingCategories', $data);
+        }
+    }
 }

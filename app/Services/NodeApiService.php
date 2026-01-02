@@ -19,8 +19,11 @@ class NodeApiService
         // Read from env.txt first, fallback to .env, then env() helper
         // NODE_URL should be the base server URL (AWS Lambda Function URL)
         // We append /api to it for API endpoints
-        // Default to production Lambda Function URL if not configured
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+        // Production Lambda Function URL
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
+        
+        // Local development URL (commented - use Lambda URL instead)
+        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
         $this->baseUrl = rtrim($nodeUrl, '/') . '/api';
         $this->apiKey = EnvReader::get('NODE_API_KEY', env('NODE_API_KEY', 'your-api-key-here'));
         $this->cacheEnabled = EnvReader::get('API_CACHE_ENABLED', env('API_CACHE_ENABLED', true));
@@ -87,6 +90,12 @@ class NodeApiService
                 
                 if (strpos($endpointPattern, 'subcategories') !== false) {
                     $keysToDelete[] = 'list:subcategories_grouped';
+                }
+                
+                // Clear paid subscriptions cache
+                if (strpos($endpointPattern, 'paid-subscriptions') !== false || strpos($endpointPattern, 'paidSubscriptions') !== false) {
+                    // Format: list:paid_subscriptions
+                    $keysToDelete[] = 'list:paid_subscriptions';
                 }
             }
             
@@ -319,6 +328,20 @@ class NodeApiService
             $statusCode = $response->status();
 
             if ($response->successful()) {
+                // Handle null or empty response data
+                if ($responseData === null || !is_array($responseData)) {
+                    Log::warning('⚠️ Node API POST returned null or non-array response', [
+                        'endpoint' => $endpoint,
+                        'status_code' => $statusCode,
+                        'response_body' => $response->body()
+                    ]);
+                    return [
+                        'status' => 'error',
+                        'msg' => 'Invalid response format from API',
+                        'data' => null
+                    ];
+                }
+                
                 // Invalidate related cache on successful POST (data modification)
                 if ($this->cacheEnabled) {
                     $this->invalidateRelatedCache($endpoint);
@@ -789,7 +812,7 @@ class NodeApiService
 
             // Provide more specific error message
             if ($isConnectionError) {
-                $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://uodttljjzj3nh3e4cjqardxip40btqef.lambda-url.ap-south-1.on.aws'));
+                $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
                 $errorMsg = "Cannot connect to API server. Please ensure Node.js API is accessible at {$nodeUrl}. Error: {$errorMsg}";
             } elseif (strpos(strtolower($errorMsg), 'upload') !== false || strpos(strtolower($errorMsg), 'image') !== false) {
                 $errorMsg = "The category image failed to upload: {$errorMsg}";

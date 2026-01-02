@@ -454,6 +454,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const imagePreviewModal = new bootstrap.Modal(document.getElementById('imagePreviewModal'));
     const previewImage = document.getElementById('previewImage');
 
+    // Preview image function (for pending requests table)
+    window.previewImage = function(imageUrl) {
+        if (imageUrl && !imageUrl.includes('placeholder')) {
+            previewImage.src = imageUrl;
+            imagePreviewModal.show();
+        }
+    };
+
     document.body.addEventListener('click', function(e) {
         if (e.target.tagName === 'IMG' && e.target.classList.contains('img-thumbnail')) {
             // Don't open if it's the placeholder "No Image" div (which isn't an img tag, but checking just in case)
@@ -463,6 +471,18 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
+
+    // Approval confirmation function
+    window.confirmApproval = function(event, action) {
+        event.preventDefault();
+        const form = event.target;
+        const subcategoryName = form.closest('tr').querySelector('td:first-child strong').textContent;
+        
+        if (confirm(`Are you sure you want to approve the subcategory request for "${subcategoryName}"?`)) {
+            form.submit();
+        }
+        return false;
+    };
 
     // Add cursor pointer to all thumbnails
     const style = document.createElement('style');

@@ -49,7 +49,9 @@
                 <li><a href="{{ route('agents') }}">Vendor Manage</a></li>
                 <li><a href="{{ route('b2bUsers') }}">B2B Manage</a></li>
                 <li><a href="{{ route('b2cUsers') }}">B2C Manage</a></li>
+                <li><a href="{{ route('srUsers') }}">SR Manage</a></li>
                 <li><a href="{{ route('deliveryUsers') }}">Door Buyers Manage</a></li>
+                <li><a href="{{ route('cacheManagement') }}">Cache Management</a></li>
                 {{-- <li><a href="{{ route('agents_leads') }}">Leads Manage</a></li> --}}
                 {{-- <li><a href="{{ route('commission_track') }}">Commission Tracking</a></li> --}}
                 {{-- <li><a href="{{ route('agent_report') }}">Agent Report</a></li> --}}
@@ -75,6 +77,13 @@
             </a>
         </li>
         @endif
+        @if(App\Models\User::permission($auth_user->user_type,'Vendor Manage',$auth_user->id))
+        <li><a href="{{ route('cacheManagement') }}" >
+            <i class="material-icons">cached</i>
+            <span class="nav-text">Cache Management</span>
+            </a>
+        </li>
+        @endif
         <li><a class="has-arrow " href="javascript:void(0);" aria-expanded="false">
                 <i class="material-symbols-outlined">account_balance_wallet</i>
                 <span class="nav-text">Accounts</span>
@@ -82,6 +91,8 @@
             <ul aria-expanded="false">
                 <li><a href="{{route('subscriptionPackages')}}">Manage Packages</a></li>
                 <li><a href="{{route('subcribersList.index')}}">Subscribers List</a></li>
+                <li><a href="{{route('paidSubscriptions.index')}}">Paid Subscriptions</a></li>
+                <li><a href="{{route('pendingBulkBuyOrders.index')}}">Pending Bulk Buy Orders</a></li>
             </ul>
         </li>
         @if(App\Models\User::permission($auth_user->user_type,'Custom Notification',$auth_user->id))
@@ -111,12 +122,18 @@
                 <span class="nav-text">Categories</span>
             </a>
         </li>
+        <li><a href="{{ route('pendingCategories') }}" >
+                <i class="material-icons">pending_actions</i>
+                <span class="nav-text">Pending Categories</span>
+            </a>
+        </li>
         <li><a class="has-arrow " href="javascript:void(0);" aria-expanded="false">
             <i class="material-icons"> extension </i>
             <span class="nav-text">Settings</span>
             </a>
             <ul aria-expanded="false">
                 <li><a href="{{ route('manage_site') }}">Settings</a></li>
+                <li><a href="{{ route('cacheManagement') }}">Cache Management</a></li>
             </ul>
         </li>
         @endif
