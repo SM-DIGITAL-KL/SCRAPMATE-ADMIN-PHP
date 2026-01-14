@@ -34,6 +34,7 @@ Route::middleware(['authusers'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
     Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard'); // Alias for compatibility
+    Route::get('/admin/dashboard/v2', [DashboardController::class, 'v2Dashboard'])->name('admin.dashboard.v2');
     
     // Categories
     Route::get('/categories', [CategoryController::class, 'index'])->name('categories');
@@ -67,8 +68,10 @@ Route::middleware(['authusers'])->group(function () {
 
     // B2C Users
     Route::get('/b2cUsers', [\App\Http\Controllers\AdminController::class, 'b2cUsers'])->name('b2cUsers');
+    Route::get('/b2cUsers/export-excel', [\App\Http\Controllers\AdminController::class, 'exportB2CUsersExcel'])->name('b2cUsers.exportExcel');
     Route::get('/b2cUserDocuments/{userId}', [\App\Http\Controllers\AdminController::class, 'viewB2CUserDocuments'])->name('b2cUserDocuments');
     Route::post('/b2cUsers/{userId}/approval-status', [\App\Http\Controllers\AdminController::class, 'updateB2CApprovalStatus'])->name('updateB2CApprovalStatus');
+    Route::post('/b2cUsers/{userId}/contacted-status', [\App\Http\Controllers\AdminController::class, 'updateB2CContactedStatus'])->name('updateB2CContactedStatus');
 
     // SR Users (Shop + Recycler)
     Route::get('/srUsers', [\App\Http\Controllers\AdminController::class, 'srUsers'])->name('srUsers');
@@ -150,6 +153,11 @@ Route::middleware(['authusers'])->group(function () {
         Route::get('/dashboard/charts', [DashboardController::class, 'dashboardCharts'])->name('api.dashboard.charts');
         Route::get('/dashboard/recent-orders', [DashboardController::class, 'dashboardRecentOrders'])->name('api.dashboard.recent-orders');
         Route::get('/dashboard/call-logs', [DashboardController::class, 'dashboardCallLogs'])->name('api.dashboard.call-logs');
+        Route::get('/dashboard/v2-user-types', [DashboardController::class, 'v2DashboardData'])->name('api.dashboard.v2');
+        Route::get('/dashboard/order/{id}', [DashboardController::class, 'orderDetails'])->name('api.dashboard.order');
+        Route::post('/admin/order/{orderId}/add-nearby-n-users', [\App\Http\Controllers\AdminController::class, 'addNearbyNUsersToOrder'])->name('api.admin.order.addNearbyNUsers');
+        Route::post('/admin/order/{orderId}/add-nearby-d-users', [\App\Http\Controllers\AdminController::class, 'addNearbyDUsersToOrder'])->name('api.admin.order.addNearbyDUsers');
+        Route::post('/admin/order/{orderId}/add-bulk-notified-vendors', [\App\Http\Controllers\AdminController::class, 'addBulkNotifiedVendors'])->name('api.admin.order.addBulkNotifiedVendors');
     });
 });
 

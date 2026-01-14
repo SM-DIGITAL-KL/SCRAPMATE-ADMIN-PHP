@@ -5,7 +5,7 @@
 
 <div class="footer footer-outer">
     <div class="copyright">
-        <p>Copyright 2024 © Designed &amp; Developed by <a href="https://alp-ts.com/" target="_blank">Alp Turnkey Solutions</a>
+        <p>Copyright 2024 © Designed &amp; Developed by <a href="#" target="_blank">SM Tech Digital</a>
         </p>
     </div>
 </div>        <!--**********************************

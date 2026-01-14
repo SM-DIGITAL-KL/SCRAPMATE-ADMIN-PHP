@@ -22,6 +22,29 @@
                                             <option value="100" {{ $limit == 100 ? 'selected' : '' }}>100</option>
                                         </select>
                                         <label class="ms-2">entries</label>
+                                        <div class="ms-4">
+                                            <label class="me-2">Filter:</label>
+                                            <button type="button" 
+                                                    class="btn btn-sm {{ request('app_version') == 'v1' ? 'btn-primary' : 'btn-outline-primary' }}" 
+                                                    id="filterV1"
+                                                    onclick="filterByVersion('v1')">
+                                                V1
+                                            </button>
+                                            <button type="button" 
+                                                    class="btn btn-sm {{ request('app_version') == 'v2' ? 'btn-primary' : 'btn-outline-primary' }} ms-2" 
+                                                    id="filterV2"
+                                                    onclick="filterByVersion('v2')">
+                                                V2
+                                            </button>
+                                            @if(request('app_version'))
+                                                <button type="button" 
+                                                        class="btn btn-sm btn-secondary ms-2" 
+                                                        id="clearFilter"
+                                                        onclick="filterByVersion('')">
+                                                    Clear Filter
+                                                </button>
+                                            @endif
+                                        </div>
                                     </div>
                                     <div>
                                         <label class="me-2">Search:</label>
@@ -110,6 +133,9 @@
                                                 if (request('search')) {
                                                     $paginationParams['search'] = request('search');
                                                 }
+                                                if (request('app_version')) {
+                                                    $paginationParams['app_version'] = request('app_version');
+                                                }
                                             @endphp
                                             <!-- Previous Page -->
                                             @if($page > 1)
@@ -193,8 +219,9 @@
 let currentPage = {{ $page ?? 1 }};
 let currentLimit = {{ $limit ?? 10 }};
 let currentSearch = '{{ request('search', '') }}';
+let currentAppVersion = '{{ request('app_version', '') }}';
 
-function loadDeliveryUsers(page, limit, search) {
+function loadDeliveryUsers(page, limit, search, appVersion) {
     // Show loading indicator
     const tbody = document.querySelector('#deliveryUsersTable tbody');
     tbody.innerHTML = '<tr><td colspan="9" class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
@@ -252,6 +279,10 @@ function loadDeliveryUsers(page, limit, search) {
         currentPage = page;
         currentLimit = limit;
         currentSearch = search || '';
+        currentAppVersion = appVersion || '';
+        
+        // Update filter button states
+        updateFilterButtons(appVersion);
         
         // Update clear button visibility
         const clearButton = document.getElementById('clearButton');
@@ -274,24 +305,64 @@ function attachPaginationListeners() {
         link.addEventListener('click', function(e) {
             e.preventDefault();
             const page = parseInt(this.getAttribute('data-page')) || 1;
-            loadDeliveryUsers(page, currentLimit, currentSearch);
+            loadDeliveryUsers(page, currentLimit, currentSearch, currentAppVersion);
         });
     });
 }
 
 function changeEntriesPerPage() {
     const limit = document.getElementById('entriesPerPage').value;
-    loadDeliveryUsers(1, parseInt(limit), currentSearch);
+    loadDeliveryUsers(1, parseInt(limit), currentSearch, currentAppVersion);
 }
 
 function performSearch() {
     const search = document.getElementById('searchInput').value;
-    loadDeliveryUsers(1, currentLimit, search);
+    loadDeliveryUsers(1, currentLimit, search, currentAppVersion);
 }
 
 function clearSearch() {
     document.getElementById('searchInput').value = '';
-    loadDeliveryUsers(1, currentLimit, '');
+    loadDeliveryUsers(1, currentLimit, '', currentAppVersion);
+}
+
+function filterByVersion(version) {
+    currentAppVersion = version || '';
+    loadDeliveryUsers(1, currentLimit, currentSearch, currentAppVersion);
+}
+
+function updateFilterButtons(version) {
+    const filterV1 = document.getElementById('filterV1');
+    const filterV2 = document.getElementById('filterV2');
+    const clearFilter = document.getElementById('clearFilter');
+    
+    if (filterV1) {
+        if (version === 'v1') {
+            filterV1.classList.remove('btn-outline-primary');
+            filterV1.classList.add('btn-primary');
+        } else {
+            filterV1.classList.remove('btn-primary');
+            filterV1.classList.add('btn-outline-primary');
+        }
+    }
+    
+    if (filterV2) {
+        if (version === 'v2') {
+            filterV2.classList.remove('btn-outline-primary');
+            filterV2.classList.add('btn-primary');
+        } else {
+            filterV2.classList.remove('btn-primary');
+            filterV2.classList.add('btn-outline-primary');
+        }
+    }
+    
+    // Show/hide clear filter button
+    if (clearFilter) {
+        if (version && version.trim()) {
+            clearFilter.style.display = 'inline-block';
+        } else {
+            clearFilter.style.display = 'none';
+        }
+    }
 }
 
 // Event listeners

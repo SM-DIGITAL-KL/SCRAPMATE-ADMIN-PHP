@@ -16,6 +16,11 @@
                 <span class="nav-text">Dashboard</span>
             </a>
         </li>
+        <li><a href="{{ route('admin.dashboard.v2') }}" >
+                <i class="material-symbols-outlined">dashboard</i>
+                <span class="nav-text">V2 User Types Dashboard</span>
+            </a>
+        </li>
         @if(App\Models\User::permission($auth_user->user_type,'Users Manage',$auth_user->id))
         <li><a class="has-arrow " href="javascript:void(0);" aria-expanded="false">
             <i class="material-icons"> extension </i>

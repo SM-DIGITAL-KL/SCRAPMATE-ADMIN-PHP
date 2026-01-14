@@ -11,7 +11,7 @@
 <!-- Meta -->
 	<meta charset="utf-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
-	<meta name="author" content="Alp Turnkey Solutions" >
+	<meta name="author" content="SM Tech Digital" >
 	<meta name="robots" content="" >
 	<meta name="keywords" content="scrapmate" >
 	<meta name="description" content="Manage scrapmate app." >
@@ -20,6 +20,7 @@
 	<meta property="og:image" content="{{ asset('assets/social-image.png') }}" >
 	<meta name="format-detection" content="telephone=no">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="csrf-token" content="{{ csrf_token() }}">
     <!-- Favicon icon -->
 	<link href="{{ asset('assets/images/scrap.ico') }}" type="" rel="icon">
     <link href="{{ asset('assets/images/scrap.ico') }}" type="" rel="shortcut icon">

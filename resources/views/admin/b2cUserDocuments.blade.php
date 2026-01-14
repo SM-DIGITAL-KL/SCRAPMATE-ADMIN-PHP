@@ -151,17 +151,39 @@
                                                             <div class="card-body" style="padding: 20px;">
                                                                 <h6 class="card-subtitle mb-3" style="color: #000; font-weight: 600; font-size: 16px;">Aadhar Card</h6>
                                                                 @if(!empty($user->shop->aadhar_card))
+                                                                    @php
+                                                                        $aadharUrl = $user->shop->aadhar_card;
+                                                                        $aadharExt = strtolower(pathinfo(parse_url($aadharUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
+                                                                        $isImage = in_array($aadharExt, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']);
+                                                                        $isPdf = $aadharExt === 'pdf';
+                                                                    @endphp
                                                                     <div class="mb-2">
-                                                                        <a href="{{ $user->shop->aadhar_card }}" target="_blank" class="btn btn-primary btn-sm me-2">
-                                                                            <i class="fa fa-file-pdf"></i> Open in New Tab
+                                                                        <a href="{{ $aadharUrl }}" target="_blank" class="btn btn-primary btn-sm me-2" download>
+                                                                            <i class="fa fa-download"></i> Download
                                                                         </a>
-                                                                        <a href="https://docs.google.com/viewer?url={{ urlencode($user->shop->aadhar_card) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
-                                                                            <i class="fa fa-eye"></i> View with Google Viewer
-                                                                        </a>
+                                                                        @if($isPdf)
+                                                                            <a href="https://docs.google.com/viewer?url={{ urlencode($aadharUrl) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
+                                                                                <i class="fa fa-eye"></i> View with Google Viewer
+                                                                            </a>
+                                                                        @endif
                                                                     </div>
-                                                                    <iframe src="https://docs.google.com/viewer?url={{ urlencode($user->shop->aadhar_card) }}&embedded=true" 
-                                                                            style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd;" 
-                                                                            frameborder="0"></iframe>
+                                                                    @if($isImage)
+                                                                        <img src="{{ $aadharUrl }}" alt="Aadhar Card" 
+                                                                             style="width: 100%; max-height: 500px; object-fit: contain; border: 1px solid #ddd; margin-top: 10px; border-radius: 4px;"
+                                                                             onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'300\'%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%23999\'%3EImage not available%3C/text%3E%3C/svg%3E';">
+                                                                    @elseif($isPdf)
+                                                                        <iframe src="https://docs.google.com/viewer?url={{ urlencode($aadharUrl) }}&embedded=true" 
+                                                                                style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd;" 
+                                                                                frameborder="0"></iframe>
+                                                                    @else
+                                                                        <div style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; background-color: #f5f5f5; border-radius: 4px;">
+                                                                            <div style="text-align: center;">
+                                                                                <i class="fa fa-file" style="font-size: 48px; color: #999; margin-bottom: 10px;"></i>
+                                                                                <p style="color: #666; font-size: 14px; margin: 0;">File type: {{ strtoupper($aadharExt ?: 'Unknown') }}</p>
+                                                                                <p style="color: #666; font-size: 12px; margin-top: 5px;">Click "Download" to view this file</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    @endif
                                                                 @else
                                                                     <p style="color: #666; font-size: 14px;">No document uploaded</p>
                                                                 @endif
@@ -175,17 +197,39 @@
                                                             <div class="card-body" style="padding: 20px;">
                                                                 <h6 class="card-subtitle mb-3" style="color: #000; font-weight: 600; font-size: 16px;">Driving License</h6>
                                                                 @if(!empty($user->shop->driving_license))
+                                                                    @php
+                                                                        $licenseUrl = $user->shop->driving_license;
+                                                                        $licenseExt = strtolower(pathinfo(parse_url($licenseUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
+                                                                        $isImage = in_array($licenseExt, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']);
+                                                                        $isPdf = $licenseExt === 'pdf';
+                                                                    @endphp
                                                                     <div class="mb-2">
-                                                                        <a href="{{ $user->shop->driving_license }}" target="_blank" class="btn btn-primary btn-sm me-2">
-                                                                            <i class="fa fa-file-pdf"></i> Open in New Tab
+                                                                        <a href="{{ $licenseUrl }}" target="_blank" class="btn btn-primary btn-sm me-2" download>
+                                                                            <i class="fa fa-download"></i> Download
                                                                         </a>
-                                                                        <a href="https://docs.google.com/viewer?url={{ urlencode($user->shop->driving_license) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
-                                                                            <i class="fa fa-eye"></i> View with Google Viewer
-                                                                        </a>
+                                                                        @if($isPdf)
+                                                                            <a href="https://docs.google.com/viewer?url={{ urlencode($licenseUrl) }}&embedded=true" target="_blank" class="btn btn-info btn-sm">
+                                                                                <i class="fa fa-eye"></i> View with Google Viewer
+                                                                            </a>
+                                                                        @endif
                                                                     </div>
-                                                                    <iframe src="https://docs.google.com/viewer?url={{ urlencode($user->shop->driving_license) }}&embedded=true" 
-                                                                            style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd;" 
-                                                                            frameborder="0"></iframe>
+                                                                    @if($isImage)
+                                                                        <img src="{{ $licenseUrl }}" alt="Driving License" 
+                                                                             style="width: 100%; max-height: 500px; object-fit: contain; border: 1px solid #ddd; margin-top: 10px; border-radius: 4px;"
+                                                                             onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'300\'%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%23999\'%3EImage not available%3C/text%3E%3C/svg%3E';">
+                                                                    @elseif($isPdf)
+                                                                        <iframe src="https://docs.google.com/viewer?url={{ urlencode($licenseUrl) }}&embedded=true" 
+                                                                                style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd;" 
+                                                                                frameborder="0"></iframe>
+                                                                    @else
+                                                                        <div style="width: 100%; height: 500px; margin-top: 10px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; background-color: #f5f5f5; border-radius: 4px;">
+                                                                            <div style="text-align: center;">
+                                                                                <i class="fa fa-file" style="font-size: 48px; color: #999; margin-bottom: 10px;"></i>
+                                                                                <p style="color: #666; font-size: 14px; margin: 0;">File type: {{ strtoupper($licenseExt ?: 'Unknown') }}</p>
+                                                                                <p style="color: #666; font-size: 12px; margin-top: 5px;">Click "Download" to view this file</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    @endif
                                                                 @else
                                                                     <p style="color: #666; font-size: 14px;">No document uploaded</p>
                                                                 @endif

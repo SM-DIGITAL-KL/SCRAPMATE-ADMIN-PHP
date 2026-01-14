@@ -536,6 +536,165 @@ class CustomerController extends Controller
                 }
             }
             
+            // Parse orderdetails if it's a string
+            if (isset($order->orderdetails) && is_string($order->orderdetails)) {
+                try {
+                    $json = json_decode($order->orderdetails, true);
+                    if (json_last_error() === JSON_ERROR_NONE) {
+                        $order->orderdetails = $json;
+                    } else {
+                        $cleaned = stripslashes($order->orderdetails);
+                        $json = json_decode($cleaned, true);
+                        if (json_last_error() === JSON_ERROR_NONE) {
+                            $order->orderdetails = $json;
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Error parsing orderdetails: ' . $e->getMessage());
+                }
+            }
+            
+            // Enrich customer details from Customer table if customerdetails is missing or incomplete
+            $needsCustomerEnrichment = false;
+            $wasStringAddress = false;
+            $savedAddressString = null;
+            
+            // Check if customerdetails is missing or empty
+            if (!isset($order->customerdetails) || empty($order->customerdetails)) {
+                $needsCustomerEnrichment = true;
+                Log::info('Customer enrichment needed: customerdetails is missing or empty');
+            } elseif (is_string($order->customerdetails)) {
+                // If it's just a string (address), we need to enrich
+                $wasStringAddress = true;
+                $savedAddressString = $order->customerdetails;
+                $needsCustomerEnrichment = true;
+                Log::info('Customer enrichment needed: customerdetails is a string (address only)', ['address' => $savedAddressString]);
+            } elseif (is_object($order->customerdetails) || is_array($order->customerdetails)) {
+                $cd = is_object($order->customerdetails) ? $order->customerdetails : (object)$order->customerdetails;
+                $hasName = !empty($cd->name) || !empty($cd->customer_name) || !empty($cd->full_name);
+                $hasContact = !empty($cd->contact) || !empty($cd->phone) || !empty($cd->mobile) || !empty($cd->mob_num) || !empty($cd->phone_number);
+                
+                if (!$hasName || !$hasContact) {
+                    $needsCustomerEnrichment = true;
+                    Log::info('Customer enrichment needed: missing name or contact', [
+                        'hasName' => $hasName,
+                        'hasContact' => $hasContact,
+                        'customerdetails_keys' => is_object($cd) ? array_keys((array)$cd) : []
+                    ]);
+                }
+            }
+            
+            if ($needsCustomerEnrichment && isset($order->customer_id) && !empty($order->customer_id)) {
+                try {
+                    Log::info('Fetching customer details from API', ['customer_id' => $order->customer_id]);
+                    $customerResponse = $this->nodeApi->get('/customer/' . $order->customer_id);
+                    
+                    if ($customerResponse['status'] === 'success' && isset($customerResponse['data']) && !empty($customerResponse['data'])) {
+                        $customer = (object)$customerResponse['data'];
+                        Log::info('Customer data fetched successfully', [
+                            'customer_id' => $order->customer_id,
+                            'customer_name' => $customer->name ?? 'N/A',
+                            'customer_contact' => $customer->contact ?? ($customer->phone ?? ($customer->mobile ?? ($customer->mob_num ?? 'N/A')))
+                        ]);
+                        
+                        // Initialize customerdetails as object if it's not already
+                        if ($wasStringAddress) {
+                            // If it was a string (address), create object with address
+                            $order->customerdetails = (object)['address' => $savedAddressString];
+                        } elseif (!isset($order->customerdetails)) {
+                            $order->customerdetails = (object)[];
+                        } elseif (is_array($order->customerdetails)) {
+                            $order->customerdetails = (object)$order->customerdetails;
+                        }
+                        
+                        // Populate customer details from Customer table
+                        if (empty($order->customerdetails->name) && empty($order->customerdetails->customer_name)) {
+                            $order->customerdetails->name = $customer->name ?? $customer->customer_name ?? '';
+                        }
+                        if (empty($order->customerdetails->contact) && empty($order->customerdetails->phone) && empty($order->customerdetails->mobile)) {
+                            $order->customerdetails->contact = $customer->contact ?? $customer->phone ?? $customer->mobile ?? $customer->mob_num ?? '';
+                            $order->customerdetails->phone = $order->customerdetails->contact;
+                        }
+                        if (empty($order->customerdetails->address) && !$wasStringAddress) {
+                            $order->customerdetails->address = $customer->address ?? ($savedAddressString ?? '');
+                        }
+                        
+                        Log::info('Customer details enriched successfully', [
+                            'name' => $order->customerdetails->name ?? 'N/A',
+                            'contact' => $order->customerdetails->contact ?? 'N/A'
+                        ]);
+                    } else {
+                        Log::warning('Customer API response was not successful or empty, trying User table', [
+                            'status' => $customerResponse['status'] ?? 'unknown',
+                            'msg' => $customerResponse['msg'] ?? 'N/A',
+                            'has_data' => isset($customerResponse['data']),
+                            'data_empty' => empty($customerResponse['data'] ?? null)
+                        ]);
+                        
+                        // For v2 orders, customer_id might be a user_id instead
+                        // Try fetching from User table via admin API
+                        try {
+                            Log::info('Trying User table for customer_id (might be user_id)', ['customer_id' => $order->customer_id]);
+                            $userResponse = $this->nodeApi->get('/admin/users/' . $order->customer_id);
+                            
+                            if ($userResponse['status'] === 'success' && isset($userResponse['data']) && !empty($userResponse['data'])) {
+                                $user = (object)$userResponse['data'];
+                                Log::info('User data fetched successfully', [
+                                    'user_id' => $order->customer_id,
+                                    'user_name' => $user->name ?? 'N/A',
+                                    'user_mobile' => $user->mob_num ?? ($user->mobile ?? ($user->phone ?? 'N/A'))
+                                ]);
+                                
+                                // Initialize customerdetails as object if it's not already
+                                if ($wasStringAddress) {
+                                    $order->customerdetails = (object)['address' => $savedAddressString];
+                                } elseif (!isset($order->customerdetails)) {
+                                    $order->customerdetails = (object)[];
+                                } elseif (is_array($order->customerdetails)) {
+                                    $order->customerdetails = (object)$order->customerdetails;
+                                }
+                                
+                                // Populate customer details from User table
+                                if (empty($order->customerdetails->name) && empty($order->customerdetails->customer_name)) {
+                                    $order->customerdetails->name = $user->name ?? '';
+                                    $order->customerdetails->customer_name = $user->name ?? '';
+                                }
+                                if (empty($order->customerdetails->contact) && empty($order->customerdetails->phone) && empty($order->customerdetails->mobile)) {
+                                    $order->customerdetails->contact = $user->mob_num ?? $user->mobile ?? $user->phone ?? '';
+                                    $order->customerdetails->phone = $order->customerdetails->contact;
+                                }
+                                
+                                Log::info('Customer details enriched from User table successfully', [
+                                    'name' => $order->customerdetails->name ?? 'N/A',
+                                    'contact' => $order->customerdetails->contact ?? 'N/A'
+                                ]);
+                            }
+                        } catch (\Exception $userErr) {
+                            Log::error('Error fetching user details: ' . $userErr->getMessage());
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Error fetching customer details: ' . $e->getMessage(), [
+                        'customer_id' => $order->customer_id ?? 'N/A',
+                        'exception' => get_class($e),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                }
+            } else {
+                if (!$needsCustomerEnrichment) {
+                    Log::info('Customer enrichment not needed - customerdetails already has data', [
+                        'has_name' => !empty($order->customerdetails->name ?? $order->customerdetails->customer_name ?? null),
+                        'has_contact' => !empty($order->customerdetails->contact ?? $order->customerdetails->phone ?? null)
+                    ]);
+                } else {
+                    Log::warning('Customer enrichment needed but customer_id is missing', [
+                        'customer_id' => $order->customer_id ?? 'N/A',
+                        'has_customerdetails' => isset($order->customerdetails),
+                        'customerdetails_type' => isset($order->customerdetails) ? gettype($order->customerdetails) : 'N/A'
+                    ]);
+                }
+            }
+            
             // Fetch delivery boy details if delivery boy ID exists
             $delvBoyId = $order->delv_boy_id ?? $order->delv_id ?? null;
             if ($delvBoyId) {

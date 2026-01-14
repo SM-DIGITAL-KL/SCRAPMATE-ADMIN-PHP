@@ -13,7 +13,11 @@ use Illuminate\Support\Facades\Log;
 
 use App\Services\NodeApiService;
 use App\Helpers\EnvReader;
-use Illuminate\Support\Facades\Cache;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
 
 class AdminController extends Controller
 {
@@ -26,23 +30,7 @@ class AdminController extends Controller
 
     public function dashboard(Request $request)
     {
-        // Check if cache should be cleared
-        if ($request->has('clear_cache') && $request->get('clear_cache') === 'true') {
-            // Clear Node.js cache
-            $this->nodeApi->clearCache('/admin/dashboard');
-            $this->nodeApi->clearCache('/admin/dashboard/kpis');
-            $this->nodeApi->clearCache('/admin/dashboard/charts');
-            $this->nodeApi->clearCache('/admin/dashboard/recent-orders');
-            $this->nodeApi->clearCache('/admin/dashboard/call-logs');
-            
-            // Clear PHP cache (10 minutes cache)
-            Cache::forget('dashboard_kpis');
-            Cache::forget('dashboard_charts');
-            Cache::forget('dashboard_recent_orders_8');
-            Cache::forget('dashboard_call_logs');
-            
-            Log::info('Dashboard cache cleared (both Node.js and PHP) via request parameter');
-        }
+        // Cache clearing removed - data is fetched directly from database
         
         // Return minimal data - actual data will be loaded via AJAX
         $data = [
@@ -77,88 +65,53 @@ class AdminController extends Controller
     // Cached dashboard API endpoints (10 minutes cache)
     public function dashboardKPIs(Request $request)
     {
-        $cacheKey = 'dashboard_kpis';
-        $cacheTime = 600; // 10 minutes in seconds
-        
-        // Check if we have stale cache (in case Node.js times out)
-        $staleCache = Cache::get($cacheKey);
-        
         try {
-            return Cache::remember($cacheKey, $cacheTime, function () use ($staleCache) {
-                try {
-                    // Use longer timeout (60 seconds) for dashboard endpoints
-                    $apiResponse = $this->nodeApi->get('/admin/dashboard/kpis', [], 60);
-                    
-                    // Log the response for debugging
-                    Log::info('Dashboard KPIs API Response', [
-                        'status' => $apiResponse['status'] ?? 'unknown',
-                        'has_data' => isset($apiResponse['data']),
-                        'message' => $apiResponse['msg'] ?? 'no message'
-                    ]);
-                    
-                    if (isset($apiResponse['status']) && $apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
-                        return response()->json([
-                            'status' => 'success',
-                            'msg' => 'Dashboard KPIs retrieved',
-                            'data' => $apiResponse['data']
-                        ]);
-                    }
-                    
-                    // If error but we have stale cache, return it
-                    if ($staleCache) {
-                        Log::warning('Dashboard KPIs: Node.js error, returning stale cache', [
-                            'api_status' => $apiResponse['status'] ?? 'unknown',
-                            'api_msg' => $apiResponse['msg'] ?? 'no message'
-                        ]);
-                        return $staleCache;
-                    }
-                    
-                    // Check if it's an API key error
-                    if (isset($apiResponse['error']) && strpos(strtolower($apiResponse['error']), 'api key') !== false) {
-                        Log::error('Dashboard KPIs: API Key mismatch', [
-                            'error' => $apiResponse['error'],
-                            'hint' => $apiResponse['hint'] ?? 'Check NODE_API_KEY in PHP .env matches API_KEY in Node.js .env'
-                        ]);
-                        return response()->json([
-                            'status' => 'error',
-                            'msg' => 'API Key mismatch: ' . ($apiResponse['hint'] ?? 'Check that NODE_API_KEY in Laravel .env matches API_KEY in Node.js .env'),
-                            'data' => null
-                        ], 401);
-                    }
-                    
-                    // Return the actual error from Node.js API
-                    return response()->json([
-                        'status' => 'error',
-                        'msg' => $apiResponse['msg'] ?? ($apiResponse['error'] ?? 'Failed to load KPIs from Node.js API'),
-                        'data' => null,
-                        'debug' => [
-                            'api_status' => $apiResponse['status'] ?? 'unknown',
-                            'api_error' => $apiResponse['error'] ?? null
-                        ]
-                    ], 500);
-                } catch (\Exception $e) {
-                    Log::error('Dashboard KPIs API error: ' . $e->getMessage(), [
-                        'exception' => get_class($e),
-                        'trace' => $e->getTraceAsString()
-                    ]);
-                    // Return stale cache if available
-                    if ($staleCache) {
-                        Log::warning('Dashboard KPIs: Exception, returning stale cache');
-                        return $staleCache;
-                    }
-                    return response()->json([
-                        'status' => 'error',
-                        'msg' => 'Error loading dashboard KPIs: ' . $e->getMessage(),
-                        'data' => null
-                    ], 500);
-                }
-            });
-        } catch (\Exception $e) {
-            // If Cache::remember fails (e.g., timeout), return stale cache
-            if ($staleCache) {
-                Log::warning('Dashboard KPIs: Cache remember failed, returning stale cache');
-                return $staleCache;
+            // Use longer timeout (60 seconds) for dashboard endpoints
+            $apiResponse = $this->nodeApi->get('/admin/dashboard/kpis', [], 60);
+            
+            // Log the response for debugging
+            Log::info('Dashboard KPIs API Response', [
+                'status' => $apiResponse['status'] ?? 'unknown',
+                'has_data' => isset($apiResponse['data']),
+                'message' => $apiResponse['msg'] ?? 'no message'
+            ]);
+            
+            if (isset($apiResponse['status']) && $apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Dashboard KPIs retrieved',
+                    'data' => $apiResponse['data']
+                ]);
             }
+            
+            // Check if it's an API key error
+            if (isset($apiResponse['error']) && strpos(strtolower($apiResponse['error']), 'api key') !== false) {
+                Log::error('Dashboard KPIs: API Key mismatch', [
+                    'error' => $apiResponse['error'],
+                    'hint' => $apiResponse['hint'] ?? 'Check NODE_API_KEY in PHP .env matches API_KEY in Node.js .env'
+                ]);
+                return response()->json([
+                    'status' => 'error',
+                    'msg' => 'API Key mismatch: ' . ($apiResponse['hint'] ?? 'Check that NODE_API_KEY in Laravel .env matches API_KEY in Node.js .env'),
+                    'data' => null
+                ], 401);
+            }
+            
+            // Return the actual error from Node.js API
+            return response()->json([
+                'status' => 'error',
+                'msg' => $apiResponse['msg'] ?? ($apiResponse['error'] ?? 'Failed to load KPIs from Node.js API'),
+                'data' => null,
+                'debug' => [
+                    'api_status' => $apiResponse['status'] ?? 'unknown',
+                    'api_error' => $apiResponse['error'] ?? null
+                ]
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Dashboard KPIs API error: ' . $e->getMessage(), [
+                'exception' => get_class($e),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'status' => 'error',
                 'msg' => 'Error loading dashboard KPIs: ' . $e->getMessage(),
@@ -169,49 +122,22 @@ class AdminController extends Controller
 
     public function dashboardCharts(Request $request)
     {
-        $cacheKey = 'dashboard_charts';
-        $cacheTime = 600; // 10 minutes in seconds
-        
-        $staleCache = Cache::get($cacheKey);
-        
         try {
-            return Cache::remember($cacheKey, $cacheTime, function () use ($staleCache) {
-                try {
-                    $apiResponse = $this->nodeApi->get('/admin/dashboard/charts', [], 60);
-                    if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
-                        return response()->json([
-                            'status' => 'success',
-                            'msg' => 'Dashboard charts retrieved',
-                            'data' => $apiResponse['data']
-                        ]);
-                    }
-                    if ($staleCache) {
-                        Log::warning('Dashboard charts: Node.js error, returning stale cache');
-                        return $staleCache;
-                    }
-                    return response()->json([
-                        'status' => 'error',
-                        'msg' => 'Failed to load charts',
-                        'data' => null
-                    ], 500);
-                } catch (\Exception $e) {
-                    Log::error('Dashboard charts API error: ' . $e->getMessage());
-                    if ($staleCache) {
-                        Log::warning('Dashboard charts: Exception, returning stale cache');
-                        return $staleCache;
-                    }
-                    return response()->json([
-                        'status' => 'error',
-                        'msg' => 'Error loading dashboard charts',
-                        'data' => null
-                    ], 500);
-                }
-            });
-        } catch (\Exception $e) {
-            if ($staleCache) {
-                Log::warning('Dashboard charts: Cache remember failed, returning stale cache');
-                return $staleCache;
+            $apiResponse = $this->nodeApi->get('/admin/dashboard/charts', [], 60);
+            if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Dashboard charts retrieved',
+                    'data' => $apiResponse['data']
+                ]);
             }
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Failed to load charts',
+                'data' => null
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Dashboard charts API error: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
                 'msg' => 'Error loading dashboard charts',
@@ -223,49 +149,23 @@ class AdminController extends Controller
     public function dashboardRecentOrders(Request $request)
     {
         $limit = $request->get('limit', 8);
-        $cacheKey = 'dashboard_recent_orders_' . $limit;
-        $cacheTime = 600; // 10 minutes in seconds
-        
-        $staleCache = Cache::get($cacheKey);
         
         try {
-            return Cache::remember($cacheKey, $cacheTime, function () use ($limit, $staleCache) {
-                try {
-                    $apiResponse = $this->nodeApi->get('/admin/dashboard/recent-orders', ['limit' => $limit], 60);
-                    if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
-                        return response()->json([
-                            'status' => 'success',
-                            'msg' => 'Recent orders retrieved',
-                            'data' => $apiResponse['data']
-                        ]);
-                    }
-                    if ($staleCache) {
-                        Log::warning('Dashboard recent orders: Node.js error, returning stale cache');
-                        return $staleCache;
-                    }
-                    return response()->json([
-                        'status' => 'error',
-                        'msg' => 'Failed to load recent orders',
-                        'data' => null
-                    ], 500);
-                } catch (\Exception $e) {
-                    Log::error('Dashboard recent orders API error: ' . $e->getMessage());
-                    if ($staleCache) {
-                        Log::warning('Dashboard recent orders: Exception, returning stale cache');
-                        return $staleCache;
-                    }
-                    return response()->json([
-                        'status' => 'error',
-                        'msg' => 'Error loading recent orders',
-                        'data' => null
-                    ], 500);
-                }
-            });
-        } catch (\Exception $e) {
-            if ($staleCache) {
-                Log::warning('Dashboard recent orders: Cache remember failed, returning stale cache');
-                return $staleCache;
+            $apiResponse = $this->nodeApi->get('/admin/dashboard/recent-orders', ['limit' => $limit], 60);
+            if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Recent orders retrieved',
+                    'data' => $apiResponse['data']
+                ]);
             }
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Failed to load recent orders',
+                'data' => null
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Dashboard recent orders API error: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
                 'msg' => 'Error loading recent orders',
@@ -276,49 +176,22 @@ class AdminController extends Controller
 
     public function dashboardCallLogs(Request $request)
     {
-        $cacheKey = 'dashboard_call_logs';
-        $cacheTime = 600; // 10 minutes in seconds
-        
-        $staleCache = Cache::get($cacheKey);
-        
         try {
-            return Cache::remember($cacheKey, $cacheTime, function () use ($staleCache) {
-                try {
-                    $apiResponse = $this->nodeApi->get('/admin/dashboard/call-logs', [], 60);
-                    if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
-                        return response()->json([
-                            'status' => 'success',
-                            'msg' => 'Call logs retrieved',
-                            'data' => $apiResponse['data']
-                        ]);
-                    }
-                    if ($staleCache) {
-                        Log::warning('Dashboard call logs: Node.js error, returning stale cache');
-                        return $staleCache;
-                    }
-                    return response()->json([
-                        'status' => 'error',
-                        'msg' => 'Failed to load call logs',
-                        'data' => null
-                    ], 500);
-                } catch (\Exception $e) {
-                    Log::error('Dashboard call logs API error: ' . $e->getMessage());
-                    if ($staleCache) {
-                        Log::warning('Dashboard call logs: Exception, returning stale cache');
-                        return $staleCache;
-                    }
-                    return response()->json([
-                        'status' => 'error',
-                        'msg' => 'Error loading call logs',
-                        'data' => null
-                    ], 500);
-                }
-            });
-        } catch (\Exception $e) {
-            if ($staleCache) {
-                Log::warning('Dashboard call logs: Cache remember failed, returning stale cache');
-                return $staleCache;
+            $apiResponse = $this->nodeApi->get('/admin/dashboard/call-logs', [], 60);
+            if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Call logs retrieved',
+                    'data' => $apiResponse['data']
+                ]);
             }
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Failed to load call logs',
+                'data' => null
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Dashboard call logs API error: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
                 'msg' => 'Error loading call logs',
@@ -339,6 +212,7 @@ class AdminController extends Controller
         $page = $request->get('page', 1);
         $limit = $request->get('limit', 10);
         $search = $request->get('search', '');
+        $appVersion = $request->get('app_version', '');
         
         $params = [
             'page' => $page,
@@ -347,6 +221,10 @@ class AdminController extends Controller
         
         if (!empty($search)) {
             $params['search'] = $search;
+        }
+        
+        if (!empty($appVersion)) {
+            $params['app_version'] = $appVersion;
         }
         
         $apiResponse = $this->nodeApi->get('/admin/b2b-users', $params);
@@ -385,6 +263,8 @@ class AdminController extends Controller
         $page = $request->get('page', 1);
         $limit = $request->get('limit', 10);
         $search = $request->get('search', '');
+        $appVersion = $request->get('app_version', '');
+        $approvalStatus = $request->get('approval_status', '');
         
         $params = [
             'page' => $page,
@@ -393,6 +273,14 @@ class AdminController extends Controller
         
         if (!empty($search)) {
             $params['search'] = $search;
+        }
+        
+        if (!empty($appVersion)) {
+            $params['app_version'] = $appVersion;
+        }
+        
+        if (!empty($approvalStatus)) {
+            $params['approval_status'] = $approvalStatus;
         }
         
         $apiResponse = $this->nodeApi->get('/admin/b2c-users', $params);
@@ -422,6 +310,211 @@ class AdminController extends Controller
                 'hasMore' => false
             ];
             return view('admin/b2cUsers', $data);
+        }
+    }
+
+    public function exportB2CUsersExcel(Request $request)
+    {
+        try {
+            // Get ALL B2C users regardless of filters (no search, no app_version, no approval_status filters)
+            $params = [
+                'page' => 1,
+                'limit' => 999999 // Get all records
+            ];
+            
+            // Don't apply any filters - export all B2C users
+            $apiResponse = $this->nodeApi->get('/admin/b2c-users', $params);
+            
+            if ($apiResponse['status'] !== 'success' || !isset($apiResponse['data']['users'])) {
+                Log::error('Node API failed for exportB2CUsersExcel', ['response' => $apiResponse]);
+                return redirect()->route('b2cUsers')->with('error', 'Failed to fetch data for export');
+            }
+            
+            $users = $apiResponse['data']['users'];
+            
+            // Create new Spreadsheet object
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            
+            // Set headers
+            $headers = ['SL NO', 'USER NAME', 'EMAIL', 'CONTACT NO', 'ADDRESS', 'SIGN UP DATE', 'APP TYPE', 'STATUS', 'CONTACTED'];
+            $sheet->fromArray($headers, null, 'A1');
+            
+            // Style header row
+            $headerStyle = [
+                'font' => [
+                    'bold' => true,
+                    'color' => ['rgb' => 'FFFFFF'],
+                ],
+                'fill' => [
+                    'fillType' => Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '6C5CE7'],
+                ],
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                ],
+            ];
+            $sheet->getStyle('A1:I1')->applyFromArray($headerStyle);
+            
+            // Set column widths
+            $sheet->getColumnDimension('A')->setWidth(10);
+            $sheet->getColumnDimension('B')->setWidth(25);
+            $sheet->getColumnDimension('C')->setWidth(30);
+            $sheet->getColumnDimension('D')->setWidth(15);
+            $sheet->getColumnDimension('E')->setWidth(50);
+            $sheet->getColumnDimension('F')->setWidth(15);
+            $sheet->getColumnDimension('G')->setWidth(12);
+            $sheet->getColumnDimension('H')->setWidth(15);
+            $sheet->getColumnDimension('I')->setWidth(12);
+            
+            // Add data rows
+            $row = 2;
+            $slNo = 1;
+            foreach ($users as $user) {
+                $userObj = (object)$user;
+                
+                // Handle shop data safely
+                $shop = null;
+                if (isset($userObj->shop)) {
+                    $shop = is_array($userObj->shop) ? (object)$userObj->shop : $userObj->shop;
+                }
+                
+                // Determine contact number
+                $contact = $userObj->contact ?? ($shop->contact ?? $userObj->mob_num ?? 'N/A');
+                
+                // Determine address
+                $address = $userObj->address ?? ($shop->address ?? 'N/A');
+                
+                // Format sign up date
+                $signUpDate = 'N/A';
+                if (isset($userObj->created_at) && $userObj->created_at) {
+                    try {
+                        $signUpDate = \Carbon\Carbon::parse($userObj->created_at)->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        $signUpDate = 'N/A';
+                    }
+                }
+                
+                // Determine app type
+                $appVersionValue = $userObj->app_version ?? 'v1';
+                $appType = $appVersionValue === 'v2' ? 'V2' : 'V1';
+                
+                // Determine status
+                $status = 'N/A';
+                if ($appVersionValue === 'v2') {
+                    $approvalStatusValue = $userObj->approval_status ?? ($shop->approval_status ?? 'pending');
+                    if ($approvalStatusValue === 'approved') {
+                        $status = 'Approved';
+                    } elseif ($approvalStatusValue === 'pending') {
+                        $status = 'Pending';
+                    } elseif ($approvalStatusValue === 'rejected') {
+                        $status = 'Rejected';
+                    } else {
+                        $status = 'Pending';
+                    }
+                } else {
+                    if (isset($userObj->del_status) && $userObj->del_status == 1) {
+                        $status = 'Active';
+                    } else {
+                        $status = 'Inactive';
+                    }
+                }
+                
+                // Determine contacted status
+                $isContacted = $userObj->is_contacted ?? false;
+                $contactedStatus = $isContacted ? 'Yes' : 'No';
+                
+                $sheet->setCellValue('A' . $row, $slNo);
+                $sheet->setCellValue('B' . $row, $userObj->name ?? 'N/A');
+                $sheet->setCellValue('C' . $row, $userObj->email ?? 'N/A');
+                $sheet->setCellValue('D' . $row, $contact);
+                $sheet->setCellValue('E' . $row, $address);
+                $sheet->setCellValue('F' . $row, $signUpDate);
+                $sheet->setCellValue('G' . $row, $appType);
+                $sheet->setCellValue('H' . $row, $status);
+                $sheet->setCellValue('I' . $row, $contactedStatus);
+                
+                // Wrap text for address column
+                $sheet->getStyle('E' . $row)->getAlignment()->setWrapText(true);
+                
+                $row++;
+                $slNo++;
+            }
+            
+            // Add borders to all cells with data
+            $lastRow = $row - 1;
+            $styleArray = [
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color' => ['rgb' => 'CCCCCC'],
+                    ],
+                ],
+            ];
+            $sheet->getStyle('A1:I' . $lastRow)->applyFromArray($styleArray);
+            
+            // Set filename - export all B2C users
+            $filename = 'b2c_users_all_' . date('Y-m-d_His') . '.xlsx';
+            
+            // Create writer and save to temporary file
+            $writer = new Xlsx($spreadsheet);
+            $tempFile = tempnam(sys_get_temp_dir(), 'b2c_users_');
+            $writer->save($tempFile);
+            
+            // Return file download
+            return response()->download($tempFile, $filename, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ])->deleteFileAfterSend(true);
+            
+        } catch (\Exception $e) {
+            Log::error('Error exporting B2C users to Excel', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->route('b2cUsers')->with('error', 'Failed to export data: ' . $e->getMessage());
+        }
+    }
+
+    public function updateB2CContactedStatus(Request $request, $userId)
+    {
+        try {
+            $isContacted = $request->input('is_contacted', false);
+            
+            // Convert to boolean if it's a string
+            if (is_string($isContacted)) {
+                $isContacted = filter_var($isContacted, FILTER_VALIDATE_BOOLEAN);
+            }
+            
+            $apiResponse = $this->nodeApi->post("/admin/b2c-users/{$userId}/contacted-status", [
+                'is_contacted' => $isContacted
+            ]);
+            
+            if ($apiResponse['status'] === 'success') {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Contacted status updated successfully',
+                    'data' => $apiResponse['data'] ?? null
+                ]);
+            } else {
+                Log::error('Node API failed for updateB2CContactedStatus', ['response' => $apiResponse]);
+                return response()->json([
+                    'status' => 'error',
+                    'msg' => $apiResponse['msg'] ?? 'Failed to update contacted status',
+                    'data' => null
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error updating B2C contacted status', [
+                'userId' => $userId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Error updating contacted status: ' . $e->getMessage(),
+                'data' => null
+            ], 500);
         }
     }
 
@@ -467,12 +560,7 @@ class AdminController extends Controller
             $params['search'] = $search;
         }
         
-        // Clear PHP cache for this endpoint to ensure fresh data
-        $cacheKey = 'node_api:' . md5('/admin/sr-users' . serialize($params));
-        Cache::forget($cacheKey);
-        
-        // Add cache-busting parameter to force fresh data from Node API
-        $params['_t'] = time(); // Timestamp to bypass cache
+        // Data fetched directly from database - no cache
         
         $apiResponse = $this->nodeApi->get('/admin/sr-users', $params);
         
@@ -516,9 +604,7 @@ class AdminController extends Controller
     {
         Log::info('AdminController::viewSRUserDocuments called', ['userId' => $userId]);
         
-        // Clear cache for this specific user to ensure fresh data
-        $cacheKey = 'node_api:' . md5('/admin/sr-users/' . $userId);
-        Cache::forget($cacheKey);
+        // Data fetched directly from database - no cache
         
         $apiResponse = $this->nodeApi->get("/admin/sr-users/{$userId}");
         
@@ -708,6 +794,7 @@ class AdminController extends Controller
         $page = $request->get('page', 1);
         $limit = $request->get('limit', 10);
         $search = $request->get('search', '');
+        $appVersion = $request->get('app_version', '');
         
         $params = [
             'page' => $page,
@@ -716,6 +803,10 @@ class AdminController extends Controller
         
         if (!empty($search)) {
             $params['search'] = $search;
+        }
+        
+        if (!empty($appVersion)) {
+            $params['app_version'] = $appVersion;
         }
         
         $apiResponse = $this->nodeApi->get('/admin/delivery-users', $params);
@@ -985,8 +1076,10 @@ class AdminController extends Controller
     {
         Log::info('🔵 AdminController::set_permission called', ['id' => $id]);
         $endpoint = '/admin/set_permission' . ($id ? '/' . $id : '');
-        // Default to production Lambda Function URL if not configured
+        // Production Lambda Function URL
         $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
+        // Local development URL (commented out)
+        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
         $nodeApiUrl = rtrim($nodeUrl, '/') . '/api';
         $fullUrl = $nodeApiUrl . $endpoint;
         Log::info('🔵 Calling Node.js API', [
@@ -1278,10 +1371,7 @@ class AdminController extends Controller
                 '3' => $data['criteria_counts'][3] ?? $data['criteria_counts']['3'] ?? 0, // No items
             ];
             
-            // Cache criteria counts for Shop model (backward compatibility)
-            \Illuminate\Support\Facades\Cache::put('shop_criteria_count_1', $data['criteria_counts']['1'], 300);
-            \Illuminate\Support\Facades\Cache::put('shop_criteria_count_2', $data['criteria_counts']['2'], 300);
-            \Illuminate\Support\Facades\Cache::put('shop_criteria_count_3', $data['criteria_counts']['3'], 300);
+            // Cache removed - data fetched directly from database
             
             Log::info('✅ vendorNotification: Successfully retrieved vendors', ['count' => $data['shops_count']]);
         } else {
@@ -1598,6 +1688,64 @@ class AdminController extends Controller
             return response()->json([
                 'status' => 'error',
                 'msg' => 'Failed to clear cache: ' . $e->getMessage(),
+                'data' => null
+            ], 500);
+        }
+    }
+
+    // Proxy endpoint to add nearby 'N' type users to order
+    public function addNearbyNUsersToOrder(Request $request, $orderId)
+    {
+        try {
+            $radius = $request->get('radius', 20);
+            // Use GET-style query parameter in the endpoint URL
+            $endpoint = "/admin/order/{$orderId}/add-nearby-n-users?radius={$radius}";
+            $response = $this->nodeApi->post($endpoint, []);
+            
+            return response()->json($response);
+        } catch (\Exception $e) {
+            Log::error('Error adding nearby N users to order: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Failed to add nearby users',
+                'data' => null
+            ], 500);
+        }
+    }
+
+    // Proxy endpoint to add nearby 'D' type users to order
+    public function addNearbyDUsersToOrder(Request $request, $orderId)
+    {
+        try {
+            $radius = $request->get('radius', 20);
+            // Use GET-style query parameter in the endpoint URL
+            $endpoint = "/admin/order/{$orderId}/add-nearby-d-users?radius={$radius}";
+            $response = $this->nodeApi->post($endpoint, []);
+            
+            return response()->json($response);
+        } catch (\Exception $e) {
+            Log::error('Error adding nearby D users to order: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Failed to add nearby users',
+                'data' => null
+            ], 500);
+        }
+    }
+
+    // Proxy endpoint to add bulk notified vendors from bulk_message_notifications
+    public function addBulkNotifiedVendors(Request $request, $orderId)
+    {
+        try {
+            $endpoint = "/admin/order/{$orderId}/add-bulk-notified-vendors";
+            $response = $this->nodeApi->post($endpoint, []);
+            
+            return response()->json($response);
+        } catch (\Exception $e) {
+            Log::error('Error adding bulk notified vendors: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Failed to add bulk notified vendors',
                 'data' => null
             ], 500);
         }

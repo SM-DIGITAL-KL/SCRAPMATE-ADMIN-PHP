@@ -111,6 +111,10 @@
                         <table class="table table-bordered">
                             <tbody>
                                 <tr>
+                                    <th width="30%">Order ID:</th>
+                                    <td>{{ $order->id ?? 'N/A' }}</td>
+                                </tr>
+                                <tr>
                                     <th width="30%">Order Number:</th>
                                     <td>{{ $order->order_number ?? ($order->order_no ?? ($order->id ?? 'N/A')) }}</td>
                                 </tr>
@@ -133,14 +137,14 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <th>Order Date:</th>
+                                    <th>Date:</th>
                                     <td>
                                         @if(isset($order->date))
-                                            {{ date('d-m-Y', strtotime($order->date)) }}
+                                            {{ date('n/j/Y', strtotime($order->date)) }}
                                         @elseif(isset($order->created_at))
-                                            {{ date('d-m-Y', strtotime($order->created_at)) }}
+                                            {{ date('n/j/Y', strtotime($order->created_at)) }}
                                         @elseif(isset($order->order_date))
-                                            {{ date('d-m-Y', strtotime($order->order_date)) }}
+                                            {{ date('n/j/Y', strtotime($order->order_date)) }}
                                         @else
                                             N/A
                                         @endif
@@ -148,16 +152,32 @@
                                 </tr>
                                 <tr>
                                     <th>Estimated Weight:</th>
-                                    <td>{{ $order->estim_weight ?? ($order->estimated_weight ?? 'N/A') }}</td>
+                                    <td>{{ $order->estim_weight ?? ($order->estimated_weight ?? 'N/A') }} kg</td>
                                 </tr>
                                 <tr>
                                     <th>Estimated Price:</th>
-                                    <td>{{ $order->estim_price ?? ($order->estimated_price ?? 'N/A') }}</td>
+                                    <td>₹{{ number_format(floatval($order->estim_price ?? ($order->estimated_price ?? 0)), 2) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Total Amount:</th>
+                                    <td>
+                                        @php
+                                            $totalAmount = $order->total_amount ?? ($order->estim_price ?? ($order->estimated_price ?? ($order->amount ?? 0)));
+                                            $totalAmount = is_numeric($totalAmount) ? floatval($totalAmount) : 0;
+                                        @endphp
+                                        <strong>₹{{ number_format($totalAmount, 2) }}</strong>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <th>Delivery Type:</th>
                                     <td>{{ $order->del_type ?? ($order->delivery_type ?? 'N/A') }}</td>
                                 </tr>
+                                @if(isset($order->preferred_pickup_time) && !empty($order->preferred_pickup_time))
+                                <tr>
+                                    <th>Preferred Pickup Time:</th>
+                                    <td>{{ $order->preferred_pickup_time }}</td>
+                                </tr>
+                                @endif
                             </tbody>
                         </table>
                     </div>
@@ -165,6 +185,57 @@
             </div>
             
             {{-- Customer Information Section --}}
+            @php
+                // Ensure customerdetails is parsed if it's a string
+                if (isset($order->customerdetails) && is_string($order->customerdetails)) {
+                    try {
+                        $json = json_decode($order->customerdetails, true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+                            $order->customerdetails = (object)$json;
+                        } else {
+                            // If JSON parse fails, try with stripslashes
+                            $cleaned = stripslashes($order->customerdetails);
+                            $json = json_decode($cleaned, true);
+                            if (json_last_error() === JSON_ERROR_NONE && is_array($json)) {
+                                $order->customerdetails = (object)$json;
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        // If parsing fails, treat as address string
+                    }
+                }
+                
+                // Extract customer info
+                $customerName = 'N/A';
+                $customerContact = 'N/A';
+                $customerAddress = 'N/A';
+                
+                if (isset($order->customerdetails)) {
+                    if (is_object($order->customerdetails)) {
+                        $customerName = $order->customerdetails->name ?? ($order->customerdetails->customer_name ?? ($order->customerdetails->full_name ?? 'N/A'));
+                        $customerContact = $order->customerdetails->contact ?? ($order->customerdetails->phone ?? ($order->customerdetails->mobile ?? ($order->customerdetails->mob_num ?? ($order->customerdetails->phone_number ?? 'N/A'))));
+                        $customerAddress = $order->customerdetails->address ?? ($order->customerdetails->full_address ?? 'N/A');
+                    } elseif (is_array($order->customerdetails)) {
+                        $customerName = $order->customerdetails['name'] ?? ($order->customerdetails['customer_name'] ?? ($order->customerdetails['full_name'] ?? 'N/A'));
+                        $customerContact = $order->customerdetails['contact'] ?? ($order->customerdetails['phone'] ?? ($order->customerdetails['mobile'] ?? ($order->customerdetails['mob_num'] ?? ($order->customerdetails['phone_number'] ?? 'N/A'))));
+                        $customerAddress = $order->customerdetails['address'] ?? ($order->customerdetails['full_address'] ?? 'N/A');
+                    } elseif (is_string($order->customerdetails)) {
+                        // If it's still a string, treat as address
+                        $customerAddress = $order->customerdetails;
+                    }
+                }
+                
+                // Also check direct order fields
+                if ($customerName === 'N/A' && isset($order->customer_name) && !empty($order->customer_name)) {
+                    $customerName = $order->customer_name;
+                }
+                if ($customerContact === 'N/A' && isset($order->customer_phone) && !empty($order->customer_phone)) {
+                    $customerContact = $order->customer_phone;
+                }
+                if ($customerAddress === 'N/A' && isset($order->customer_address) && !empty($order->customer_address)) {
+                    $customerAddress = $order->customer_address;
+                }
+            @endphp
             <div class="row mt-4">
                 <div class="col-12">
                     <h5 class="mb-3">Customer Information</h5>
@@ -172,58 +243,115 @@
                         <table class="table table-bordered">
                             <tbody>
                                 <tr>
-                                    <th width="30%">Name:</th>
-                                    <td>
-                                        @php
-                                            $customerName = 'N/A';
-                                            if (isset($order->customerdetails)) {
-                                                if (is_object($order->customerdetails)) {
-                                                    $customerName = $order->customerdetails->name ?? ($order->customerdetails->customer_name ?? 'N/A');
-                                                } elseif (is_array($order->customerdetails)) {
-                                                    $customerName = $order->customerdetails['name'] ?? ($order->customerdetails['customer_name'] ?? 'N/A');
-                                                }
-                                            }
-                                        @endphp
-                                        {{ $customerName }}
-                                    </td>
+                                    <th width="30%">Customer ID:</th>
+                                    <td>{{ $order->customer_id ?? 'N/A' }}</td>
                                 </tr>
                                 <tr>
-                                    <th>Contact:</th>
-                                    <td>
-                                        @php
-                                            $customerContact = 'N/A';
-                                            if (isset($order->customerdetails)) {
-                                                if (is_object($order->customerdetails)) {
-                                                    $customerContact = $order->customerdetails->contact ?? ($order->customerdetails->phone ?? ($order->customerdetails->mob_num ?? 'N/A'));
-                                                } elseif (is_array($order->customerdetails)) {
-                                                    $customerContact = $order->customerdetails['contact'] ?? ($order->customerdetails['phone'] ?? ($order->customerdetails['mob_num'] ?? 'N/A'));
-                                                }
-                                            }
-                                        @endphp
-                                        {{ $customerContact }}
-                                    </td>
+                                    <th width="30%">Name:</th>
+                                    <td>{{ $customerName }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Phone:</th>
+                                    <td>{{ $customerContact }}</td>
                                 </tr>
                                 <tr>
                                     <th>Address:</th>
-                                    <td>
-                                        @php
-                                            $customerAddress = 'N/A';
-                                            if (isset($order->customerdetails)) {
-                                                if (is_object($order->customerdetails)) {
-                                                    $customerAddress = $order->customerdetails->address ?? 'N/A';
-                                                } elseif (is_array($order->customerdetails)) {
-                                                    $customerAddress = $order->customerdetails['address'] ?? 'N/A';
-                                                }
-                                            }
-                                        @endphp
-                                        {{ $customerAddress }}
-                                    </td>
+                                    <td>{{ $customerAddress }}</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
+            
+            {{-- Order Items Section --}}
+            @php
+                $orderItems = [];
+                if (isset($order->orderdetails)) {
+                    if (is_string($order->orderdetails)) {
+                        try {
+                            $orderDetailsJson = json_decode($order->orderdetails, true);
+                            if (json_last_error() === JSON_ERROR_NONE) {
+                                $order->orderdetails = $orderDetailsJson;
+                            }
+                        } catch (\Exception $e) {
+                            // Keep as string if parsing fails
+                        }
+                    }
+                    
+                    if (is_array($order->orderdetails)) {
+                        $orderItems = $order->orderdetails;
+                    } elseif (is_object($order->orderdetails) && isset($order->orderdetails->orders)) {
+                        // Handle nested structure: { orders: { category: [items] } }
+                        foreach ($order->orderdetails->orders as $category => $subcats) {
+                            if (is_array($subcats)) {
+                                $orderItems = array_merge($orderItems, $subcats);
+                            } elseif (is_object($subcats)) {
+                                foreach ($subcats as $items) {
+                                    if (is_array($items)) {
+                                        $orderItems = array_merge($orderItems, $items);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            @endphp
+            
+            @if(count($orderItems) > 0)
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5 class="mb-3">Order Items</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Quantity</th>
+                                    <th>Weight</th>
+                                    <th>Price</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($orderItems as $item)
+                                    @php
+                                        $itemObj = is_object($item) ? $item : (object)$item;
+                                        
+                                        // Get item name - check multiple field names (material_name is used in v2 orders)
+                                        $itemName = $itemObj->material_name ?? $itemObj->name ?? $itemObj->category_name ?? $itemObj->item_name ?? $itemObj->subcategory_name ?? 'N/A';
+                                        
+                                        // Get weight - check multiple field names (expected_weight_kg is used in v2 orders)
+                                        $weight = $itemObj->expected_weight_kg ?? $itemObj->expected_weight ?? $itemObj->approximate_weight ?? $itemObj->weight ?? $itemObj->approximateWeight ?? $itemObj->estimated_weight ?? $itemObj->actual_weight_kg ?? $itemObj->actual_weight ?? null;
+                                        $weightValue = $weight !== null ? (is_numeric($weight) ? floatval($weight) : null) : null;
+                                        
+                                        // Get price per kg (price_per_kg is used in v2 orders)
+                                        $amountPerKg = $itemObj->price_per_kg ?? $itemObj->pricePerKg ?? $itemObj->amount_per_kg ?? $itemObj->amountPerKg ?? $itemObj->rate ?? $itemObj->price_unit ?? 0;
+                                        $amountPerKgValue = is_numeric($amountPerKg) ? floatval($amountPerKg) : 0;
+                                        
+                                        // Calculate total price: weight * price_per_kg
+                                        $totalPrice = 0;
+                                        if ($weightValue !== null && $amountPerKgValue > 0) {
+                                            $totalPrice = $weightValue * $amountPerKgValue;
+                                        } else {
+                                            // Fallback to direct price field
+                                            $totalPrice = floatval($itemObj->price ?? $itemObj->total_price ?? $itemObj->amount ?? 0);
+                                        }
+                                        
+                                        $weightDisplay = $weightValue !== null ? $weightValue . ' kg' : 'N/A';
+                                    @endphp
+                                    <tr>
+                                        <td>{{ $itemName }}</td>
+                                        <td>{{ $itemObj->quantity ?? $itemObj->qty ?? '-' }}</td>
+                                        <td>{{ $weightDisplay }}</td>
+                                        <td>₹{{ number_format($totalPrice, 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            @endif
             
             {{-- Scrap Images Section --}}
             <div class="row mt-4">

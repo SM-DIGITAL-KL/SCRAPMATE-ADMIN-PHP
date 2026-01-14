@@ -9,16 +9,32 @@
 	var marketChart = function(){
 		
 		 var options = {
-          series: [{
-          name: 'Vendors',
-          data: window.dashboardData.vendors_count
-        //   data: [200, 400, 300, 400, 200, 400, 300, 400, 200, 400, 300, 400]
-        }, {
-          name: 'Customers',
-          data: window.dashboardData.customers_count
-        //   data: [500, 300, 400, 200, 500, 200 , 400, 200, 500, 300, 400, 200]
-
-        }],
+          series: [
+          {
+            name: 'New Users (N)',
+            data: window.dashboardData.new_users_count || []
+          },
+          {
+            name: 'Delivery (D)',
+            data: window.dashboardData.delivery_count || []
+          },
+          {
+            name: 'Recycler (R)',
+            data: window.dashboardData.recycler_count || []
+          },
+          {
+            name: 'Vendors (S)',
+            data: window.dashboardData.vendors_count || []
+          },
+          {
+            name: 'Customers (C)',
+            data: window.dashboardData.customers_count || []
+          },
+          {
+            name: 'Shop+Recycler (SR)',
+            data: window.dashboardData.shop_recycler_count || []
+          }
+        ],
           chart: {
           height: 280,
           type: 'area',
@@ -26,14 +42,14 @@
 			  show:false
 		  }
         },
-		colors:["var(--rgba-primary-1)","#f5a792"],
+		colors:["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40"],
         dataLabels: {
           enabled: false
         },
         stroke: {
           curve: 'smooth',
 		  width:3,
-		  colors:["var(--primary)","var(--secondary)"],
+		  colors:["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40"],
         },
 		legend:{
 			show:false
@@ -88,14 +104,34 @@
             window.chartInstances.marketChart = chart;
         }
 
-		jQuery('#dzOldSeries').on('change',function(){
+		jQuery('#dzSeriesN').on('change',function(){
 			jQuery(this).toggleClass('disabled');
-			chart.toggleSeries('Vendors');
+			chart.toggleSeries('New Users (N)');
 		});
 		
-		jQuery('#dzNewSeries').on('change',function(){
+		jQuery('#dzSeriesD').on('change',function(){
 			jQuery(this).toggleClass('disabled');
-			chart.toggleSeries('Customers');
+			chart.toggleSeries('Delivery (D)');
+		});
+		
+		jQuery('#dzSeriesR').on('change',function(){
+			jQuery(this).toggleClass('disabled');
+			chart.toggleSeries('Recycler (R)');
+		});
+		
+		jQuery('#dzSeriesS').on('change',function(){
+			jQuery(this).toggleClass('disabled');
+			chart.toggleSeries('Vendors (S)');
+		});
+		
+		jQuery('#dzSeriesC').on('change',function(){
+			jQuery(this).toggleClass('disabled');
+			chart.toggleSeries('Customers (C)');
+		});
+		
+		jQuery('#dzSeriesSR').on('change',function(){
+			jQuery(this).toggleClass('disabled');
+			chart.toggleSeries('Shop+Recycler (SR)');
 		});
 	}
 	var chartTimeline = function(){

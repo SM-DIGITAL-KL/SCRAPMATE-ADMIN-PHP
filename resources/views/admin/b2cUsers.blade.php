@@ -22,6 +22,50 @@
                                             <option value="100" {{ $limit == 100 ? 'selected' : '' }}>100</option>
                                         </select>
                                         <label class="ms-2">entries</label>
+                                        <div class="ms-4">
+                                            <label class="me-2">Filter:</label>
+                                            <button type="button" 
+                                                    class="btn btn-sm {{ request('app_version') == 'v1' ? 'btn-primary' : 'btn-outline-primary' }}" 
+                                                    id="filterV1"
+                                                    onclick="filterByVersion('v1')">
+                                                V1
+                                            </button>
+                                            <button type="button" 
+                                                    class="btn btn-sm {{ request('app_version') == 'v2' ? 'btn-primary' : 'btn-outline-primary' }} ms-2" 
+                                                    id="filterV2"
+                                                    onclick="filterByVersion('v2')">
+                                                V2
+                                            </button>
+                                            <div class="ms-3 d-inline-block" id="approvalStatusFilter" style="display: {{ request('app_version') == 'v2' ? 'inline-block' : 'none' }};">
+                                                <label class="me-2">Approval Status:</label>
+                                                <button type="button" 
+                                                        class="btn btn-sm {{ request('approval_status') == 'pending' ? 'btn-warning' : 'btn-outline-warning' }}" 
+                                                        id="filterPending"
+                                                        onclick="filterByApprovalStatus('pending')">
+                                                    Pending
+                                                </button>
+                                                <button type="button" 
+                                                        class="btn btn-sm {{ request('approval_status') == 'approved' ? 'btn-success' : 'btn-outline-success' }} ms-2" 
+                                                        id="filterApproved"
+                                                        onclick="filterByApprovalStatus('approved')">
+                                                    Approved
+                                                </button>
+                                                <button type="button" 
+                                                        class="btn btn-sm {{ request('approval_status') == 'rejected' ? 'btn-danger' : 'btn-outline-danger' }} ms-2" 
+                                                        id="filterRejected"
+                                                        onclick="filterByApprovalStatus('rejected')">
+                                                    Rejected
+                                                </button>
+                                            </div>
+                                            @if(request('app_version') || request('approval_status'))
+                                                <button type="button" 
+                                                        class="btn btn-sm btn-secondary ms-2" 
+                                                        id="clearFilter"
+                                                        onclick="clearAllFilters()">
+                                                    Clear Filter
+                                                </button>
+                                            @endif
+                                        </div>
                                     </div>
                                     <div>
                                         <label class="me-2">Search:</label>
@@ -33,6 +77,12 @@
                                                placeholder="Search by phone or name...">
                                         <button type="button" class="btn btn-sm btn-primary ms-2" id="searchButton">Search</button>
                                         <button type="button" class="btn btn-sm btn-secondary ms-2" id="clearButton" style="display: {{ request('search') ? 'inline-block' : 'none' }};">Clear</button>
+                                        <a href="{{ route('b2cUsers.exportExcel') }}" 
+                                           class="btn btn-sm btn-success ms-2" 
+                                           id="downloadExcelBtn"
+                                           title="Download all B2C users as Excel">
+                                            <i class="fa fa-download"></i> Download All Excel
+                                        </a>
                                     </div>
                                 </div>
                                 <table class="table table-striped table-hover" id="b2cUsersTable" style="margin-bottom: 0;">
@@ -46,6 +96,7 @@
                                             <th style="min-width: 120px;">SIGN UP DATE</th>
                                             <th style="min-width: 100px;">APP TYPE</th>
                                             <th style="min-width: 100px;">STATUS</th>
+                                            <th style="min-width: 120px;">CONTACTED</th>
                                             <th style="min-width: 80px;">ACTION</th>
                                         </tr>
                                     </thead>
@@ -98,6 +149,24 @@
                                                         @endphp
                                                     </td>
                                                     <td>
+                                                        @php
+                                                            $isContacted = $user->is_contacted ?? false;
+                                                        @endphp
+                                                        <div class="form-check form-switch">
+                                                            <input class="form-check-input contacted-toggle" 
+                                                                   type="checkbox" 
+                                                                   data-user-id="{{ $user->id }}"
+                                                                   {{ $isContacted ? 'checked' : '' }}
+                                                                   id="contacted_{{ $user->id }}"
+                                                                   onchange="toggleContactedStatus({{ $user->id }}, this.checked)">
+                                                            <label class="form-check-label" for="contacted_{{ $user->id }}">
+                                                                <span class="badge {{ $isContacted ? 'bg-success' : 'bg-secondary' }}">
+                                                                    {{ $isContacted ? 'Yes' : 'No' }}
+                                                                </span>
+                                                            </label>
+                                                        </div>
+                                                    </td>
+                                                    <td>
                                                         <a href="{{ route('b2cUserDocuments', ['userId' => $user->id]) }}" class="btn btn-sm btn-info" title="View Details">
                                                             <i class="fa fa-eye"></i>
                                                         </a>
@@ -106,7 +175,7 @@
                                             @endforeach
                                         @else
                                             <tr>
-                                                <td colspan="9" class="text-center">No matching records found</td>
+                                                <td colspan="10" class="text-center">No matching records found</td>
                                             </tr>
                                         @endif
                                     </tbody>
@@ -125,6 +194,12 @@
                                                 $paginationParams = ['limit' => $limit];
                                                 if (request('search')) {
                                                     $paginationParams['search'] = request('search');
+                                                }
+                                                if (request('app_version')) {
+                                                    $paginationParams['app_version'] = request('app_version');
+                                                }
+                                                if (request('approval_status')) {
+                                                    $paginationParams['approval_status'] = request('approval_status');
                                                 }
                                             @endphp
                                             <!-- Previous Page -->
@@ -209,16 +284,24 @@
 let currentPage = {{ $page ?? 1 }};
 let currentLimit = {{ $limit ?? 10 }};
 let currentSearch = '{{ request('search', '') }}';
+let currentAppVersion = '{{ request('app_version', '') }}';
+let currentApprovalStatus = '{{ request('approval_status', '') }}';
 
-function loadB2CUsers(page, limit, search) {
+function loadB2CUsers(page, limit, search, appVersion, approvalStatus) {
     // Show loading indicator
     const tbody = document.querySelector('#b2cUsersTable tbody');
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
     
     // Build URL
     let url = "{{ route('b2cUsers') }}?page=" + page + "&limit=" + limit;
     if (search && search.trim()) {
         url += "&search=" + encodeURIComponent(search.trim());
+    }
+    if (appVersion && appVersion.trim()) {
+        url += "&app_version=" + encodeURIComponent(appVersion.trim());
+    }
+    if (approvalStatus && approvalStatus.trim() && appVersion === 'v2') {
+        url += "&approval_status=" + encodeURIComponent(approvalStatus.trim());
     }
     
     // Update URL without reload
@@ -268,6 +351,11 @@ function loadB2CUsers(page, limit, search) {
         currentPage = page;
         currentLimit = limit;
         currentSearch = search || '';
+        currentAppVersion = appVersion || '';
+        currentApprovalStatus = (approvalStatus && appVersion === 'v2') ? approvalStatus : '';
+        
+        // Update filter button states
+        updateFilterButtons(appVersion, approvalStatus);
         
         // Update clear button visibility
         const clearButton = document.getElementById('clearButton');
@@ -277,10 +365,67 @@ function loadB2CUsers(page, limit, search) {
         
         // Re-attach pagination event listeners
         attachPaginationListeners();
+        
+        // Update download Excel button URL
+        updateDownloadExcelUrl();
     })
     .catch(error => {
         console.error('Error loading data:', error);
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">Error loading data. Please try again.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger">Error loading data. Please try again.</td></tr>';
+    });
+}
+
+function toggleContactedStatus(userId, isContacted) {
+    // Show loading state
+    const checkbox = document.querySelector(`#contacted_${userId}`);
+    const originalState = !isContacted; // Store original state in case of error
+    
+    // Disable checkbox during request
+    checkbox.disabled = true;
+    
+    // Make API call to update contacted status
+    fetch(`/b2cUsers/${userId}/contacted-status`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            is_contacted: isContacted
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Update the badge
+            const label = checkbox.nextElementSibling;
+            const badge = label.querySelector('.badge');
+            if (isContacted) {
+                badge.classList.remove('bg-secondary');
+                badge.classList.add('bg-success');
+                badge.textContent = 'Yes';
+            } else {
+                badge.classList.remove('bg-success');
+                badge.classList.add('bg-secondary');
+                badge.textContent = 'No';
+            }
+            console.log(`✅ Contacted status updated for user ${userId}: ${isContacted}`);
+        } else {
+            // Revert checkbox state on error
+            checkbox.checked = originalState;
+            alert('Failed to update contacted status: ' + (data.msg || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error updating contacted status:', error);
+        // Revert checkbox state on error
+        checkbox.checked = originalState;
+        alert('Error updating contacted status. Please try again.');
+    })
+    .finally(() => {
+        // Re-enable checkbox
+        checkbox.disabled = false;
     });
 }
 
@@ -290,24 +435,129 @@ function attachPaginationListeners() {
         link.addEventListener('click', function(e) {
             e.preventDefault();
             const page = parseInt(this.getAttribute('data-page')) || 1;
-            loadB2CUsers(page, currentLimit, currentSearch);
+            loadB2CUsers(page, currentLimit, currentSearch, currentAppVersion, currentApprovalStatus);
         });
     });
 }
 
 function changeEntriesPerPage() {
     const limit = document.getElementById('entriesPerPage').value;
-    loadB2CUsers(1, parseInt(limit), currentSearch);
+    loadB2CUsers(1, parseInt(limit), currentSearch, currentAppVersion, currentApprovalStatus);
 }
 
 function performSearch() {
     const search = document.getElementById('searchInput').value;
-    loadB2CUsers(1, currentLimit, search);
+    loadB2CUsers(1, currentLimit, search, currentAppVersion, currentApprovalStatus);
 }
 
 function clearSearch() {
     document.getElementById('searchInput').value = '';
-    loadB2CUsers(1, currentLimit, '');
+    loadB2CUsers(1, currentLimit, '', currentAppVersion, currentApprovalStatus);
+}
+
+function filterByVersion(version) {
+    currentAppVersion = version || '';
+    // Clear approval_status filter if switching away from v2
+    if (version !== 'v2') {
+        currentApprovalStatus = '';
+    }
+    loadB2CUsers(1, currentLimit, currentSearch, currentAppVersion, currentApprovalStatus);
+}
+
+function filterByApprovalStatus(status) {
+    // Only allow approval_status filter when v2 is selected
+    if (currentAppVersion !== 'v2') {
+        alert('Please select V2 filter first to use approval status filter');
+        return;
+    }
+    currentApprovalStatus = status || '';
+    loadB2CUsers(1, currentLimit, currentSearch, currentAppVersion, currentApprovalStatus);
+}
+
+function clearAllFilters() {
+    currentAppVersion = '';
+    currentApprovalStatus = '';
+    loadB2CUsers(1, currentLimit, currentSearch, currentAppVersion, currentApprovalStatus);
+}
+
+function updateFilterButtons(version, approvalStatus) {
+    const filterV1 = document.getElementById('filterV1');
+    const filterV2 = document.getElementById('filterV2');
+    const clearFilter = document.getElementById('clearFilter');
+    
+    if (filterV1) {
+        if (version === 'v1') {
+            filterV1.classList.remove('btn-outline-primary');
+            filterV1.classList.add('btn-primary');
+        } else {
+            filterV1.classList.remove('btn-primary');
+            filterV1.classList.add('btn-outline-primary');
+        }
+    }
+    
+    if (filterV2) {
+        if (version === 'v2') {
+            filterV2.classList.remove('btn-outline-primary');
+            filterV2.classList.add('btn-primary');
+        } else {
+            filterV2.classList.remove('btn-primary');
+            filterV2.classList.add('btn-outline-primary');
+        }
+    }
+    
+    // Show/hide clear filter button
+    if (clearFilter) {
+        if ((version && version.trim()) || (approvalStatus && approvalStatus.trim())) {
+            clearFilter.style.display = 'inline-block';
+        } else {
+            clearFilter.style.display = 'none';
+        }
+    }
+    
+    // Update approval status filter buttons (only show when v2 is selected)
+    const approvalStatusContainer = document.getElementById('approvalStatusFilter');
+    if (approvalStatusContainer) {
+        if (version === 'v2') {
+            approvalStatusContainer.style.display = 'inline-block';
+        } else {
+            approvalStatusContainer.style.display = 'none';
+        }
+    }
+    
+    // Update approval status button states
+    const filterPending = document.getElementById('filterPending');
+    const filterApproved = document.getElementById('filterApproved');
+    const filterRejected = document.getElementById('filterRejected');
+    
+    if (filterPending) {
+        if (approvalStatus === 'pending') {
+            filterPending.classList.remove('btn-outline-warning');
+            filterPending.classList.add('btn-warning');
+        } else {
+            filterPending.classList.remove('btn-warning');
+            filterPending.classList.add('btn-outline-warning');
+        }
+    }
+    
+    if (filterApproved) {
+        if (approvalStatus === 'approved') {
+            filterApproved.classList.remove('btn-outline-success');
+            filterApproved.classList.add('btn-success');
+        } else {
+            filterApproved.classList.remove('btn-success');
+            filterApproved.classList.add('btn-outline-success');
+        }
+    }
+    
+    if (filterRejected) {
+        if (approvalStatus === 'rejected') {
+            filterRejected.classList.remove('btn-outline-danger');
+            filterRejected.classList.add('btn-danger');
+        } else {
+            filterRejected.classList.remove('btn-danger');
+            filterRejected.classList.add('btn-outline-danger');
+        }
+    }
 }
 
 // Event listeners
@@ -329,9 +579,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Entries per page dropdown
     document.getElementById('entriesPerPage').addEventListener('change', changeEntriesPerPage);
     
+    // Initialize filter button states on page load
+    updateFilterButtons(currentAppVersion, currentApprovalStatus);
+    
+    // Update download Excel button URL
+    updateDownloadExcelUrl();
+    
     // Attach pagination listeners
     attachPaginationListeners();
 });
+
+function updateDownloadExcelUrl() {
+    const downloadBtn = document.getElementById('downloadExcelBtn');
+    if (!downloadBtn) return;
+    
+    // Always export all B2C users regardless of filters
+    let url = "{{ route('b2cUsers.exportExcel') }}";
+    downloadBtn.href = url;
+}
 </script>
 @endsection
 

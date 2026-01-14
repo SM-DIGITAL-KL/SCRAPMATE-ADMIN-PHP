@@ -19,10 +19,11 @@ class NodeApiService
         // Read from env.txt first, fallback to .env, then env() helper
         // NODE_URL should be the base server URL (AWS Lambda Function URL)
         // We append /api to it for API endpoints
+        
         // Production Lambda Function URL
         $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
         
-        // Local development URL (commented - use Lambda URL instead)
+        // Local development URL (commented out)
         // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
         $this->baseUrl = rtrim($nodeUrl, '/') . '/api';
         $this->apiKey = EnvReader::get('NODE_API_KEY', env('NODE_API_KEY', 'your-api-key-here'));
@@ -51,95 +52,8 @@ class NodeApiService
      */
     public function clearCache($endpointPattern = null)
     {
-        if (!$this->cacheEnabled) {
-            return;
-        }
-        
-        // Clear PHP cache first
-        if ($endpointPattern) {
-            // Clear PHP cache for specific endpoint pattern
-            $pattern = 'node_api:' . md5($endpointPattern);
-            Cache::forget($pattern);
-            
-            // Also clear all PHP cache to be safe (for now)
-            Cache::flush();
-            
-            Log::info('PHP cache cleared for pattern', ['pattern' => $endpointPattern]);
-        } else {
-            // Clear all PHP API cache
-            Cache::flush();
-            Log::info('All PHP API cache cleared');
-        }
-        
-        // Clear Node.js Redis cache by calling the backend API
-        try {
-            $headers = $this->getAuthHeaders();
-            
-            // Determine which cache keys to clear based on endpoint pattern
-            $keysToDelete = [];
-            
-            if ($endpointPattern) {
-                // Map endpoint patterns to specific cache keys
-                // Note: Cache keys must match the format used in Node.js RedisCache.listKey()
-                if (strpos($endpointPattern, 'category_img_list') !== false || strpos($endpointPattern, 'category') !== false) {
-                    // Clear category-related cache keys
-                    // Format: list:{type}:{param1}:{param2}:...
-                    $keysToDelete[] = 'list:category_img_list:version:s3';
-                    $keysToDelete[] = 'list:subcategories_grouped';
-                }
-                
-                if (strpos($endpointPattern, 'subcategories') !== false) {
-                    $keysToDelete[] = 'list:subcategories_grouped';
-                }
-                
-                // Clear paid subscriptions cache
-                if (strpos($endpointPattern, 'paid-subscriptions') !== false || strpos($endpointPattern, 'paidSubscriptions') !== false) {
-                    // Format: list:paid_subscriptions
-                    $keysToDelete[] = 'list:paid_subscriptions';
-                }
-            }
-            
-            // Call Node.js backend to clear Redis cache
-            $clearCacheUrl = $this->baseUrl . '/clear_redis_cache';
-            
-            if (!empty($keysToDelete)) {
-                // Delete specific keys
-                $response = Http::withHeaders($headers)
-                    ->timeout(10)
-                    ->post($clearCacheUrl, ['keys' => $keysToDelete]);
-            } else {
-                // Use type-based clearing
-                $cacheType = 'list'; // Default to list type for category endpoints
-                if ($endpointPattern) {
-                    if (strpos($endpointPattern, 'dashboard') !== false) {
-                        $cacheType = 'dashboard';
-                    }
-                }
-                
-                $response = Http::withHeaders($headers)
-                    ->timeout(10)
-                    ->post($clearCacheUrl, ['type' => $cacheType]);
-            }
-            
-            if ($response->successful()) {
-                Log::info('Node.js Redis cache cleared successfully', [
-                    'pattern' => $endpointPattern,
-                    'keys_deleted' => !empty($keysToDelete) ? $keysToDelete : 'type-based'
-                ]);
-            } else {
-                Log::warning('Failed to clear Node.js Redis cache', [
-                    'pattern' => $endpointPattern,
-                    'status' => $response->status(),
-                    'response' => $response->json()
-                ]);
-            }
-        } catch (\Exception $e) {
-            // Log error but don't fail - PHP cache is already cleared
-            Log::warning('Error calling Node.js cache clear endpoint', [
-                'pattern' => $endpointPattern,
-                'error' => $e->getMessage()
-            ]);
-        }
+        // Cache removed - no action needed
+        return;
     }
 
     /**
@@ -223,16 +137,6 @@ class NodeApiService
     {
         $fullUrl = $this->baseUrl . $endpoint;
         $method = 'GET';
-        $cacheKey = $this->getCacheKey($endpoint, $params);
-        
-        // Check cache first
-        if ($this->cacheEnabled) {
-            $cachedData = Cache::get($cacheKey);
-            if ($cachedData !== null) {
-                // Reduced logging for performance
-                return $cachedData;
-            }
-        }
         
         try {
             $headers = $this->getAuthHeaders();
@@ -246,11 +150,7 @@ class NodeApiService
             $statusCode = $response->status();
 
             if ($response->successful()) {
-                // Cache successful responses
-                if ($this->cacheEnabled && isset($responseData['status']) && $responseData['status'] === 'success') {
-                    Cache::put($cacheKey, $responseData, now()->addMinutes($this->cacheTtl));
-                }
-                
+                // No caching - data fetched directly from database
                 return $responseData;
             }
 
@@ -322,7 +222,7 @@ class NodeApiService
             $headers['Content-Type'] = 'application/json';
             
             // Reduced logging for performance
-            $response = Http::withHeaders($headers)->timeout(10)->post($fullUrl, $data);
+            $response = Http::withHeaders($headers)->timeout(60)->post($fullUrl, $data);
 
             $responseData = $response->json();
             $statusCode = $response->status();
@@ -342,10 +242,7 @@ class NodeApiService
                     ];
                 }
                 
-                // Invalidate related cache on successful POST (data modification)
-                if ($this->cacheEnabled) {
-                    $this->invalidateRelatedCache($endpoint);
-                }
+                // Cache removed - data fetched directly from database
                 return $responseData;
             }
 
@@ -507,10 +404,7 @@ class NodeApiService
                     'full_response_data' => $responseData
                 ]);
 
-                // Invalidate related cache on successful POST (data modification)
-                if ($this->cacheEnabled) {
-                    $this->invalidateRelatedCache($endpoint);
-                }
+                // Cache removed - data fetched directly from database
                 return $responseData;
             }
 
@@ -812,7 +706,10 @@ class NodeApiService
 
             // Provide more specific error message
             if ($isConnectionError) {
+                // Production Lambda Function URL (commented out for local development)
                 $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
+                // Local development URL (commented out)
+                // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
                 $errorMsg = "Cannot connect to API server. Please ensure Node.js API is accessible at {$nodeUrl}. Error: {$errorMsg}";
             } elseif (strpos(strtolower($errorMsg), 'upload') !== false || strpos(strtolower($errorMsg), 'image') !== false) {
                 $errorMsg = "The category image failed to upload: {$errorMsg}";
@@ -886,25 +783,8 @@ class NodeApiService
      */
     private function invalidateRelatedCache($endpoint)
     {
-        if (!$this->cacheEnabled) {
-            return;
-        }
-        
-        // Extract base path from endpoint (e.g., /customer/list -> /customer)
-        $basePath = dirname($endpoint);
-        if ($basePath === '.') {
-            $basePath = $endpoint;
-        }
-        
-        // Clear cache for all endpoints under the same base path
-        // Note: This is a simple implementation. For production, consider using cache tags
-        // For now, we'll clear all cache when data is modified (safe but less efficient)
-        Cache::flush();
-        
-        Log::info('Cache invalidated after data modification', [
-            'endpoint' => $endpoint,
-            'base_path' => $basePath
-        ]);
+        // Cache removed - no action needed
+        return;
     }
     
     /**

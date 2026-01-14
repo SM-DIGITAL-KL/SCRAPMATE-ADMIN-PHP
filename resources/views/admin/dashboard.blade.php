@@ -479,25 +479,65 @@
 						</div>
 					</div>
 					<div class="p-static">
-						<div class="d-flex align-items-center mb-3 mb-sm-0">
-							<div class="round weekly" id="dzOldSeries">
+						<div class="d-flex align-items-center mb-3 mb-sm-0 flex-wrap">
+							<div class="round weekly" id="dzSeriesN">
 								<div>
-									<input type="checkbox" id="checkbox1" name="radio" value="weekly">
-									<label for="checkbox1" class="checkmark"></label>
+									<input type="checkbox" id="checkboxN" name="radio" value="N" checked>
+									<label for="checkboxN" class="checkmark"></label>
 								</div>
 								<div>
-									<span class="fs-14">Vendors</span>
-									<h4 class="fs-5 font-w700 mb-0">{{$this_month_vendors}}</h4>
+									<span class="fs-14">New Users (N)</span>
+									<h4 class="fs-5 font-w700 mb-0" id="countN">0</h4>
 								</div>
 							</div>
-							<div class="round" id="dzNewSeries">
+							<div class="round" id="dzSeriesD">
 								<div>
-									<input type="checkbox" id="checkbox" name="radio" value="monthly">
-									<label for="checkbox" class="checkmark"></label>
+									<input type="checkbox" id="checkboxD" name="radio" value="D" checked>
+									<label for="checkboxD" class="checkmark"></label>
 								</div>
 								<div>
-									<span class="fs-14">Customers</span>
-									<h4 class="fs-5 font-w700 mb-0">{{$this_month_customers}}</h4>
+									<span class="fs-14">Delivery (D)</span>
+									<h4 class="fs-5 font-w700 mb-0" id="countD">0</h4>
+								</div>
+							</div>
+							<div class="round" id="dzSeriesR">
+								<div>
+									<input type="checkbox" id="checkboxR" name="radio" value="R" checked>
+									<label for="checkboxR" class="checkmark"></label>
+								</div>
+								<div>
+									<span class="fs-14">Recycler (R)</span>
+									<h4 class="fs-5 font-w700 mb-0" id="countR">0</h4>
+								</div>
+							</div>
+							<div class="round" id="dzSeriesS">
+								<div>
+									<input type="checkbox" id="checkboxS" name="radio" value="S" checked>
+									<label for="checkboxS" class="checkmark"></label>
+								</div>
+								<div>
+									<span class="fs-14">Vendors (S)</span>
+									<h4 class="fs-5 font-w700 mb-0" id="countS">{{$this_month_vendors}}</h4>
+								</div>
+							</div>
+							<div class="round" id="dzSeriesC">
+								<div>
+									<input type="checkbox" id="checkboxC" name="radio" value="C" checked>
+									<label for="checkboxC" class="checkmark"></label>
+								</div>
+								<div>
+									<span class="fs-14">Customers (C)</span>
+									<h4 class="fs-5 font-w700 mb-0" id="countC">{{$this_month_customers}}</h4>
+								</div>
+							</div>
+							<div class="round" id="dzSeriesSR">
+								<div>
+									<input type="checkbox" id="checkboxSR" name="radio" value="SR" checked>
+									<label for="checkboxSR" class="checkmark"></label>
+								</div>
+								<div>
+									<span class="fs-14">Shop+Recycler (SR)</span>
+									<h4 class="fs-5 font-w700 mb-0" id="countSR">0</h4>
 								</div>
 							</div>
 						</div>
@@ -1422,8 +1462,12 @@
 <script>
     // Dashboard data will be loaded asynchronously
     window.dashboardData = {
-        customers_count: @json($month_wise_customers_count),
-		vendors_count: @json($month_wise_vendor_count),
+        new_users_count: @json(array_fill(0, 12, 0)),      // N
+        delivery_count: @json(array_fill(0, 12, 0)),       // D
+        recycler_count: @json(array_fill(0, 12, 0)),      // R
+        vendors_count: @json($month_wise_vendor_count),    // S
+        customers_count: @json($month_wise_customers_count), // C
+        shop_recycler_count: @json(array_fill(0, 12, 0)), // SR
 		total_orders: @json($month_wise_orders_count),
 		total_completed_orders: @json($month_wise_completed_orders_count),
 		total_pending_orders: @json($month_wise_pending_orders_count)
@@ -1482,11 +1526,61 @@
     
     // Function to update charts data
     function updateChartsData(data) {
-        if (data.month_wise_customers_count) {
-            window.dashboardData.customers_count = data.month_wise_customers_count;
+        console.log('📊 [updateChartsData] Received data:', data);
+        
+        if (data.month_wise_new_users_count && Array.isArray(data.month_wise_new_users_count)) {
+            window.dashboardData.new_users_count = data.month_wise_new_users_count;
+            // Update count display
+            const totalN = data.month_wise_new_users_count.reduce((a, b) => a + b, 0);
+            const countNEl = document.getElementById('countN');
+            if (countNEl) countNEl.textContent = totalN;
+            console.log('✅ [updateChartsData] N (New Users):', data.month_wise_new_users_count, 'Total:', totalN);
+        } else {
+            console.warn('⚠️ [updateChartsData] month_wise_new_users_count missing or invalid');
         }
-        if (data.month_wise_vendor_count) {
+        
+        if (data.month_wise_delivery_count && Array.isArray(data.month_wise_delivery_count)) {
+            window.dashboardData.delivery_count = data.month_wise_delivery_count;
+            const totalD = data.month_wise_delivery_count.reduce((a, b) => a + b, 0);
+            const countDEl = document.getElementById('countD');
+            if (countDEl) countDEl.textContent = totalD;
+            console.log('✅ [updateChartsData] D (Delivery):', data.month_wise_delivery_count, 'Total:', totalD);
+        } else {
+            console.warn('⚠️ [updateChartsData] month_wise_delivery_count missing or invalid');
+        }
+        
+        if (data.month_wise_recycler_count && Array.isArray(data.month_wise_recycler_count)) {
+            window.dashboardData.recycler_count = data.month_wise_recycler_count;
+            const totalR = data.month_wise_recycler_count.reduce((a, b) => a + b, 0);
+            const countREl = document.getElementById('countR');
+            if (countREl) countREl.textContent = totalR;
+            console.log('✅ [updateChartsData] R (Recycler):', data.month_wise_recycler_count, 'Total:', totalR);
+        } else {
+            console.warn('⚠️ [updateChartsData] month_wise_recycler_count missing or invalid');
+        }
+        
+        if (data.month_wise_vendor_count && Array.isArray(data.month_wise_vendor_count)) {
             window.dashboardData.vendors_count = data.month_wise_vendor_count;
+            console.log('✅ [updateChartsData] S (Vendors):', data.month_wise_vendor_count);
+        } else {
+            console.warn('⚠️ [updateChartsData] month_wise_vendor_count missing or invalid');
+        }
+        
+        if (data.month_wise_customers_count && Array.isArray(data.month_wise_customers_count)) {
+            window.dashboardData.customers_count = data.month_wise_customers_count;
+            console.log('✅ [updateChartsData] C (Customers):', data.month_wise_customers_count);
+        } else {
+            console.warn('⚠️ [updateChartsData] month_wise_customers_count missing or invalid');
+        }
+        
+        if (data.month_wise_shop_recycler_count && Array.isArray(data.month_wise_shop_recycler_count)) {
+            window.dashboardData.shop_recycler_count = data.month_wise_shop_recycler_count;
+            const totalSR = data.month_wise_shop_recycler_count.reduce((a, b) => a + b, 0);
+            const countSREl = document.getElementById('countSR');
+            if (countSREl) countSREl.textContent = totalSR;
+            console.log('✅ [updateChartsData] SR (Shop+Recycler):', data.month_wise_shop_recycler_count, 'Total:', totalSR);
+        } else {
+            console.warn('⚠️ [updateChartsData] month_wise_shop_recycler_count missing or invalid');
         }
         if (data.month_wise_orders_count) {
             window.dashboardData.total_orders = data.month_wise_orders_count;
@@ -1498,18 +1592,40 @@
             window.dashboardData.total_pending_orders = data.month_wise_pending_orders_count;
         }
         
-        // Update marketChart (Vendors & Customers)
-        if (window.chartInstances.marketChart && window.dashboardData.vendors_count && window.dashboardData.customers_count) {
-            window.chartInstances.marketChart.updateSeries([
-                {
-                    name: 'Vendors',
-                    data: window.dashboardData.vendors_count
-                },
-                {
-                    name: 'Customers',
-                    data: window.dashboardData.customers_count
+        // Update marketChart with all user types
+        if (window.chartInstances.marketChart) {
+            const series = [];
+            
+            // Helper function to add series if data exists and is valid array
+            const addSeriesIfValid = (name, data) => {
+                if (data && Array.isArray(data) && data.length === 12) {
+                    series.push({ name: name, data: data });
+                    return true;
                 }
-            ]);
+                return false;
+            };
+            
+            addSeriesIfValid('New Users (N)', window.dashboardData.new_users_count);
+            addSeriesIfValid('Delivery (D)', window.dashboardData.delivery_count);
+            addSeriesIfValid('Recycler (R)', window.dashboardData.recycler_count);
+            addSeriesIfValid('Vendors (S)', window.dashboardData.vendors_count);
+            addSeriesIfValid('Customers (C)', window.dashboardData.customers_count);
+            addSeriesIfValid('Shop+Recycler (SR)', window.dashboardData.shop_recycler_count);
+            
+            console.log(`📊 [updateChartsData] Updating chart with ${series.length} series:`, series.map(s => s.name));
+            
+            if (series.length > 0) {
+                try {
+                    window.chartInstances.marketChart.updateSeries(series);
+                    console.log('✅ [updateChartsData] Chart updated successfully');
+                } catch (chartError) {
+                    console.error('❌ [updateChartsData] Error updating chart:', chartError);
+                }
+            } else {
+                console.warn('⚠️ [updateChartsData] No valid series data to update chart');
+            }
+        } else {
+            console.warn('⚠️ [updateChartsData] Chart instance not found, chart may not be initialized yet');
         }
         
         // Update overiewChart (Orders Overview)
