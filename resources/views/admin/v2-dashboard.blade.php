@@ -164,9 +164,10 @@
                                     </div>
                                     <div class="card-body">
                                         <div class="table-responsive">
-                                            <table class="table table-striped" id="customerAppOrdersTable">
+                                            <table class="table table-striped table-bordered" id="customerAppOrdersTable">
                                                 <thead>
                                                     <tr>
+                                                        <th>Sl.No</th>
                                                         <th>Order ID</th>
                                                         <th>Order Number</th>
                                                         <th>Customer ID</th>
@@ -178,9 +179,6 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    <tr>
-                                                        <td colspan="7" class="text-center">Loading orders...</td>
-                                                    </tr>
                                                 </tbody>
                                             </table>
                                         </div>
@@ -259,10 +257,13 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Load dashboard data
+    // Initialize DataTable for customer app orders
+    initializeCustomerAppOrdersTable();
+    
+    // Load dashboard data (for counts and charts)
     loadV2DashboardData();
     
-    // Refresh data every 5 minutes
+    // Refresh dashboard data every 5 minutes (but not the DataTable - it handles its own refresh)
     setInterval(loadV2DashboardData, 300000);
 });
 
@@ -309,8 +310,7 @@ function updateDashboard(data) {
         bulkOrdersElement.textContent = data.orders?.bulkOrders || 0;
     }
     
-    // Update order tables
-    updateCustomerAppOrdersTable(data.orders?.recentCustomerAppOrders || []);
+    // Update bulk orders table (customer app orders now uses DataTables with pagination)
     updateBulkOrdersTable(data.orders?.recentBulkOrders || []);
     
     // Update monthly downloads chart
@@ -388,35 +388,113 @@ function updateMonthlyDownloadsChart(userTypes) {
     monthlyChart.render();
 }
 
-function updateCustomerAppOrdersTable(orders) {
-    const tbody = document.querySelector('#customerAppOrdersTable tbody');
-    if (!orders || orders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No customer app orders found</td></tr>';
-        return;
+// Initialize DataTable for customer app orders
+let customerAppOrdersTable = null;
+
+function initializeCustomerAppOrdersTable() {
+    if (customerAppOrdersTable) {
+        customerAppOrdersTable.destroy();
     }
     
-    tbody.innerHTML = orders.map(order => {
-        const orderDate = order.created_at || order.date ? new Date(order.created_at || order.date).toLocaleDateString() : 'N/A';
-        const amount = order.total_amount || order.estim_price || order.amount || '0.00';
-        const status = getStatusLabel(order.status);
-        const orderId = order.id || 'N/A';
-        return `
-            <tr>
-                <td>${orderId}</td>
-                <td>${order.order_no || order.order_number || 'N/A'}</td>
-                <td>${order.customer_id || 'N/A'}</td>
-                <td>${order.shop_id || 'N/A'}</td>
-                <td><span class="badge badge-${getStatusColor(order.status)}">${status}</span></td>
-                <td>₹${parseFloat(amount).toFixed(2)}</td>
-                <td>${orderDate}</td>
-                <td>
-                    <button class="btn btn-sm btn-primary" onclick="viewOrderDetails(${orderId}, 'customer_app')">
-                        <i class="fa fa-eye"></i> View Details
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    customerAppOrdersTable = $('#customerAppOrdersTable').DataTable({
+        processing: true,
+        serverSide: true,
+        destroy: true,
+        ajax: {
+            url: "{{ route('api.dashboard.customerAppOrders') }}",
+            type: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            error: function(xhr, error, thrown) {
+                console.error('DataTables Ajax Error:', {
+                    xhr: xhr,
+                    error: error,
+                    thrown: thrown,
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText,
+                    responseJSON: xhr.responseJSON
+                });
+                
+                let errorMsg = 'Error loading orders. ';
+                if (xhr.status === 0) {
+                    errorMsg += 'Network error - please check your connection.';
+                } else if (xhr.status === 404) {
+                    errorMsg += 'Endpoint not found.';
+                } else if (xhr.status === 500) {
+                    errorMsg += 'Server error.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg += ' ' + xhr.responseJSON.error;
+                    }
+                } else {
+                    errorMsg += 'Status: ' + xhr.status + ' ' + xhr.statusText;
+                }
+                
+                alert(errorMsg);
+            }
+        },
+        columns: [
+            {
+                data: 'DT_RowIndex',
+                name: 'DT_RowIndex',
+                orderable: false,
+                searchable: false
+            },
+            {
+                data: 'id',
+                name: 'id'
+            },
+            {
+                data: 'order_number',
+                name: 'order_number'
+            },
+            {
+                data: 'customer_id',
+                name: 'customer_id'
+            },
+            {
+                data: 'shop_id',
+                name: 'shop_id'
+            },
+            {
+                data: 'status_badge',
+                name: 'status',
+                orderable: true,
+                searchable: false
+            },
+            {
+                data: 'amount',
+                name: 'amount',
+                orderable: true,
+                searchable: false
+            },
+            {
+                data: 'date',
+                name: 'date',
+                orderable: true
+            },
+            {
+                data: 'action',
+                name: 'action',
+                orderable: false,
+                searchable: false
+            }
+        ],
+        order: [[1, 'desc']], // Sort by Order ID descending
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+        language: {
+            processing: '<i class="fa fa-spinner fa-spin fa-3x fa-fw"></i><span class="sr-only">Loading...</span>'
+        }
+    });
+}
+
+function updateCustomerAppOrdersTable(orders) {
+    // This function is kept for backward compatibility but won't be used
+    // DataTables will handle the table updates via AJAX
+    console.log('updateCustomerAppOrdersTable called - DataTables handles this automatically');
 }
 
 function updateBulkOrdersTable(orders) {
@@ -689,7 +767,88 @@ function displayOrderDetails(order, orderType) {
                 </table>
             </div>
             
-            ${order.shop_id ? `
+            ${order.accepted_vendor ? `
+            <h5 class="mb-3 mt-4">Accepted Vendor Information</h5>
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <tbody>
+                        ${order.accepted_vendor.type === 'shop' ? `
+                        <tr>
+                            <th width="30%">Accepted By:</th>
+                            <td><span class="badge badge-primary">Shop</span></td>
+                        </tr>
+                        <tr>
+                            <th>Shop ID:</th>
+                            <td>${order.accepted_vendor.shop_id || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Shop Name:</th>
+                            <td>${order.accepted_vendor.shop_name || shopName || 'N/A'}${order.accepted_vendor.shop_not_found ? ' <span class="badge badge-warning">Shop not found in database</span>' : ''}</td>
+                        </tr>
+                        <tr>
+                            <th>Vendor User ID:</th>
+                            <td>${order.accepted_vendor.user_id || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Vendor Name:</th>
+                            <td>${order.accepted_vendor.user_name || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Vendor Mobile:</th>
+                            <td>${order.accepted_vendor.user_mobile || order.accepted_vendor.shop_contact || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Vendor Email:</th>
+                            <td>${order.accepted_vendor.user_email || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>User Type:</th>
+                            <td><span class="badge badge-info">${order.accepted_vendor.user_type || 'N/A'}</span></td>
+                        </tr>
+                        <tr>
+                            <th>App Version:</th>
+                            <td>${order.accepted_vendor.app_version || 'N/A'}</td>
+                        </tr>
+                        ${order.accepted_vendor.shop_address ? `
+                        <tr>
+                            <th>Shop Address:</th>
+                            <td>${order.accepted_vendor.shop_address}${order.accepted_vendor.shop_place ? ', ' + order.accepted_vendor.shop_place : ''}${order.accepted_vendor.shop_state ? ', ' + order.accepted_vendor.shop_state : ''}${order.accepted_vendor.shop_pincode ? ' - ' + order.accepted_vendor.shop_pincode : ''}</td>
+                        </tr>
+                        ` : ''}
+                        ` : `
+                        <tr>
+                            <th width="30%">Accepted By:</th>
+                            <td><span class="badge badge-info">Delivery Boy</span></td>
+                        </tr>
+                        <tr>
+                            <th>Delivery Boy ID:</th>
+                            <td>${order.accepted_vendor.user_id || order.delv_id || order.delv_boy_id || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Name:</th>
+                            <td>${order.accepted_vendor.user_name || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Mobile:</th>
+                            <td>${order.accepted_vendor.user_mobile || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Email:</th>
+                            <td>${order.accepted_vendor.user_email || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>User Type:</th>
+                            <td><span class="badge badge-info">${order.accepted_vendor.user_type || 'N/A'}</span></td>
+                        </tr>
+                        <tr>
+                            <th>App Version:</th>
+                            <td>${order.accepted_vendor.app_version || 'N/A'}</td>
+                        </tr>
+                        `}
+                    </tbody>
+                </table>
+            </div>
+            ` : order.shop_id ? `
             <h5 class="mb-3 mt-4">Shop Information</h5>
             <div class="table-responsive">
                 <table class="table table-bordered">
@@ -768,6 +927,52 @@ function displayOrderDetails(order, orderType) {
                         <img src="${img}" alt="Order Image ${idx + 1}" class="img-fluid img-thumbnail" style="max-height: 200px; width: 100%; object-fit: cover;">
                     </div>
                 `).join('')}
+            </div>
+            ` : ''}
+            
+            ${order.monthly_subscribed_vendors && order.monthly_subscribed_vendors.length > 0 ? `
+            <h5 class="mb-3 mt-4">Monthly Subscribed Vendors (${order.monthly_subscribed_vendors.length})</h5>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped">
+                    <thead>
+                        <tr>
+                            <th>Vendor ID</th>
+                            <th>Name</th>
+                            <th>Mobile</th>
+                            <th>Email</th>
+                            <th>User Type</th>
+                            <th>Shop Name</th>
+                            <th>Subscription Ends</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${order.monthly_subscribed_vendors.map(vendor => {
+                            const isAlreadyNotified = order.notified_vendors && order.notified_vendors.some(nv => parseInt(nv.id) === parseInt(vendor.id));
+                            const subscriptionEnds = vendor.subscription_ends_at ? new Date(vendor.subscription_ends_at).toLocaleDateString() : 'N/A';
+                            return `
+                            <tr>
+                                <td>${vendor.id || 'N/A'}</td>
+                                <td>${vendor.name || 'N/A'}</td>
+                                <td>${vendor.mobile || 'N/A'}</td>
+                                <td>${vendor.email || 'N/A'}</td>
+                                <td><span class="badge badge-secondary">${vendor.user_type || 'N/A'}</span></td>
+                                <td>${vendor.shop_name || 'N/A'}</td>
+                                <td>${subscriptionEnds}</td>
+                                <td>
+                                    ${isAlreadyNotified ? `
+                                        <span class="badge badge-success">Already Notified</span>
+                                    ` : `
+                                        <button class="btn btn-sm btn-primary" onclick="addVendorToOrder(event, ${order.id}, ${vendor.id}, '${vendor.name || 'N/A'}')" title="Add to Notified Vendors">
+                                            <i class="fa fa-plus"></i> Add
+                                        </button>
+                                    `}
+                                </td>
+                            </tr>
+                        `;
+                        }).join('')}
+                    </tbody>
+                </table>
             </div>
             ` : ''}
             
@@ -1099,6 +1304,62 @@ function addBulkNotifiedVendors(event, orderId) {
     .catch(error => {
         console.error('Error:', error);
         alert('Failed to send SMS to bulk vendors: ' + error.message);
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
+}
+
+function addVendorToOrder(event, orderId, vendorId, vendorName) {
+    if (!confirm(`Are you sure you want to add "${vendorName}" to the notified vendors list for this order?`)) {
+        return;
+    }
+    
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Adding...';
+    
+    fetch(`/api/admin/order/${orderId}/add-vendor/${vendorId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        if (data.status === 'success') {
+            const totalCount = data.data ? (data.data.total_notified_vendors || 0) : 0;
+            const alreadyNotified = data.data ? (data.data.already_notified || false) : false;
+            
+            if (alreadyNotified) {
+                alert(`"${vendorName}" is already in the notified vendors list.\n\nTotal notified vendors: ${totalCount}`);
+            } else {
+                alert(`Success! Added "${vendorName}" to the notified vendors list.\n\nTotal notified vendors: ${totalCount}`);
+            }
+            
+            // Reload order details to show updated notified vendors
+            const orderType = 'customer_app';
+            viewOrderDetails(orderId, orderType);
+        } else {
+            alert('Error: ' + (data.msg || 'Failed to add vendor to order'));
+            button.disabled = false;
+            button.innerHTML = originalText;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to add vendor to order: ' + error.message);
         button.disabled = false;
         button.innerHTML = originalText;
     });

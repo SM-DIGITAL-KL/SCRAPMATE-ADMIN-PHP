@@ -51,6 +51,7 @@
             <span class="nav-text">Vendor Manage</span>
             </a>
             <ul aria-expanded="false">
+                <li><a href="{{ route('newUsers') }}">New Users Manage</a></li>
                 <li><a href="{{ route('agents') }}">Vendor Manage</a></li>
                 <li><a href="{{ route('b2bUsers') }}">B2B Manage</a></li>
                 <li><a href="{{ route('b2cUsers') }}">B2C Manage</a></li>
@@ -130,6 +131,11 @@
         <li><a href="{{ route('pendingCategories') }}" >
                 <i class="material-icons">pending_actions</i>
                 <span class="nav-text">Pending Categories</span>
+            </a>
+        </li>
+        <li><a href="{{ route('liveprices.index') }}" >
+                <i class="material-icons">attach_money</i>
+                <span class="nav-text">Live Prices</span>
             </a>
         </li>
         <li><a class="has-arrow " href="javascript:void(0);" aria-expanded="false">

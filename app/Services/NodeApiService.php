@@ -20,11 +20,11 @@ class NodeApiService
         // NODE_URL should be the base server URL (AWS Lambda Function URL)
         // We append /api to it for API endpoints
         
-        // Production Lambda Function URL
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
+        // Production Lambda Function URL (commented out for local development)
+        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
         
-        // Local development URL (commented out)
-        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+        // Local development URL
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
         $this->baseUrl = rtrim($nodeUrl, '/') . '/api';
         $this->apiKey = EnvReader::get('NODE_API_KEY', env('NODE_API_KEY', 'your-api-key-here'));
         $this->cacheEnabled = EnvReader::get('API_CACHE_ENABLED', env('API_CACHE_ENABLED', true));
@@ -222,7 +222,19 @@ class NodeApiService
             $headers['Content-Type'] = 'application/json';
             
             // Reduced logging for performance
-            $response = Http::withHeaders($headers)->timeout(60)->post($fullUrl, $data);
+            // Increase timeout for large data syncs (like live prices with 400+ items)
+            $timeout = 300; // 5 minutes for large syncs
+            if (isset($data['prices']) && is_array($data['prices']) && count($data['prices']) > 100) {
+                $timeout = 600; // 10 minutes for very large syncs
+            }
+            
+            Log::info('📤 [NODE API] POST request', [
+                'endpoint' => $endpoint,
+                'data_size' => isset($data['prices']) ? count($data['prices']) : 'N/A',
+                'timeout' => $timeout
+            ]);
+            
+            $response = Http::withHeaders($headers)->timeout($timeout)->post($fullUrl, $data);
 
             $responseData = $response->json();
             $statusCode = $response->status();
@@ -250,12 +262,14 @@ class NodeApiService
             Log::error('❌ Node API POST Error', [
                 'endpoint' => $endpoint,
                 'status_code' => $statusCode,
-                'response_status' => $responseData['status'] ?? 'unknown'
+                'response_status' => $responseData['status'] ?? 'unknown',
+                'response_msg' => $responseData['msg'] ?? 'N/A',
+                'response_body' => substr($response->body(), 0, 500) // First 500 chars
             ]);
 
             return [
                 'status' => 'error',
-                'msg' => 'API request failed',
+                'msg' => $responseData['msg'] ?? 'API request failed',
                 'data' => null
             ];
         } catch (\Exception $e) {
@@ -707,9 +721,9 @@ class NodeApiService
             // Provide more specific error message
             if ($isConnectionError) {
                 // Production Lambda Function URL (commented out for local development)
-                $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-                // Local development URL (commented out)
-                // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+                // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
+                // Local development URL
+                $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
                 $errorMsg = "Cannot connect to API server. Please ensure Node.js API is accessible at {$nodeUrl}. Error: {$errorMsg}";
             } elseif (strpos(strtolower($errorMsg), 'upload') !== false || strpos(strtolower($errorMsg), 'image') !== false) {
                 $errorMsg = "The category image failed to upload: {$errorMsg}";

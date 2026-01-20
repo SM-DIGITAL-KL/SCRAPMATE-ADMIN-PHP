@@ -313,6 +313,57 @@ class AdminController extends Controller
         }
     }
 
+    public function newUsers(Request $request)
+    {
+        // Reduced logging for performance
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 10);
+        $search = $request->get('search', '');
+        $appVersion = $request->get('app_version', '');
+        
+        $params = [
+            'page' => $page,
+            'limit' => $limit
+        ];
+        
+        if (!empty($search)) {
+            $params['search'] = $search;
+        }
+        
+        if (!empty($appVersion)) {
+            $params['app_version'] = $appVersion;
+        }
+        
+        $apiResponse = $this->nodeApi->get('/admin/new-users', $params);
+        
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $data = $apiResponse['data'];
+            // Convert users array to collection of objects
+            if (isset($data['users']) && is_array($data['users'])) {
+                $data['users'] = collect($data['users'])->map(function($user) {
+                    return (object)$user;
+                });
+            } else {
+                $data['users'] = collect([]);
+            }
+            
+            $data['pagename'] = 'New Users Manage';
+            return view('admin/newUsers', $data);
+        } else {
+            Log::error('Node API failed for newUsers', ['response' => $apiResponse]);
+            $data = [
+                'pagename' => 'New Users Manage',
+                'users' => collect([]),
+                'total' => 0,
+                'page' => 1,
+                'limit' => 10,
+                'totalPages' => 0,
+                'hasMore' => false
+            ];
+            return view('admin/newUsers', $data);
+        }
+    }
+
     public function exportB2CUsersExcel(Request $request)
     {
         try {
@@ -1076,10 +1127,10 @@ class AdminController extends Controller
     {
         Log::info('🔵 AdminController::set_permission called', ['id' => $id]);
         $endpoint = '/admin/set_permission' . ($id ? '/' . $id : '');
-        // Production Lambda Function URL
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-        // Local development URL (commented out)
-        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+        // Production Lambda Function URL (commented out for local development)
+        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
+        // Local development URL
+        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
         $nodeApiUrl = rtrim($nodeUrl, '/') . '/api';
         $fullUrl = $nodeApiUrl . $endpoint;
         Log::info('🔵 Calling Node.js API', [
@@ -1746,6 +1797,24 @@ class AdminController extends Controller
             return response()->json([
                 'status' => 'error',
                 'msg' => 'Failed to add bulk notified vendors',
+                'data' => null
+            ], 500);
+        }
+    }
+
+    // Proxy endpoint to add a single vendor to order's notified_vendor_ids
+    public function addVendorToOrder(Request $request, $orderId, $vendorId)
+    {
+        try {
+            $endpoint = "/admin/order/{$orderId}/add-vendor/{$vendorId}";
+            $response = $this->nodeApi->post($endpoint, []);
+            
+            return response()->json($response);
+        } catch (\Exception $e) {
+            Log::error('Error adding vendor to order: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Failed to add vendor to order',
                 'data' => null
             ], 500);
         }

@@ -52,10 +52,10 @@ class LoginController extends Controller
         try {
             // Read from env.txt first, fallback to .env, then env() helper
             // NODE_URL should be the base server URL (AWS Lambda Function URL)
-            // Production Lambda Function URL
-            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-            // Local development URL (commented out)
-            // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+            // Production Lambda Function URL (commented out for local development)
+            // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
+            // Local development URL
+            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
             $loginUrl = rtrim($nodeUrl, '/') . '/dologin';
             
             // Get API key from environment (read from env.txt)
@@ -264,10 +264,10 @@ class LoginController extends Controller
                 }
             }
         } catch (\Exception $e) {
-            // Production Lambda Function URL
-            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-            // Local development URL (commented out)
-            // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+            // Production Lambda Function URL (commented out for local development)
+            // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
+            // Local development URL
+            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
             $loginUrl = rtrim($nodeUrl, '/') . '/dologin';
             
             $errorDetails = [

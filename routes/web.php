@@ -8,6 +8,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\AccountsController;
+use App\Http\Controllers\LivePricesController;
 
 // PHP Upload Limits Check Route (for debugging)
 Route::get('/check-php-limits', function() {
@@ -78,6 +79,9 @@ Route::middleware(['authusers'])->group(function () {
     Route::get('/srUserDocuments/{userId}', [\App\Http\Controllers\AdminController::class, 'viewSRUserDocuments'])->name('srUserDocuments');
     Route::post('/srUsers/{userId}/approval-status', [\App\Http\Controllers\AdminController::class, 'updateSRApprovalStatus'])->name('updateSRApprovalStatus');
 
+    // New Users
+    Route::get('/newUsers', [\App\Http\Controllers\AdminController::class, 'newUsers'])->name('newUsers');
+
     // Delivery Users
     Route::get('/deliveryUsers', [\App\Http\Controllers\AdminController::class, 'deliveryUsers'])->name('deliveryUsers');
     Route::get('/deliveryUserDocuments/{userId}', [\App\Http\Controllers\AdminController::class, 'viewDeliveryUserDocuments'])->name('deliveryUserDocuments');
@@ -143,6 +147,13 @@ Route::middleware(['authusers'])->group(function () {
     Route::get('/view_pendingBulkBuyOrders', [AccountsController::class, 'viewPendingBulkBuyOrders'])->name('view_pendingBulkBuyOrders');
     Route::post('/pendingBulkBuyOrderApproval', [AccountsController::class, 'updatePendingBulkBuyOrderApproval'])->name('pendingBulkBuyOrderApproval');
 
+    // Live Scrap Prices (No Database)
+    Route::get('/liveprices', [LivePricesController::class, 'index'])->name('liveprices.index');
+    Route::post('/liveprices/scrape', [LivePricesController::class, 'scrapeNow'])->name('liveprices.scrape');
+    
+    // Live Prices API endpoint (JSON) for Node.js backend
+    Route::get('/api/liveprices', [LivePricesController::class, 'apiIndex'])->name('liveprices.api');
+
     // Site Management
     Route::match(['get', 'post'], '/manage_site', [SiteController::class, 'manage_site'])->name('manage_site');
     Route::match(['get', 'post'], '/updateAppVersion', [SiteController::class, 'updateAppVersion'])->name('updateAppVersion');
@@ -155,9 +166,11 @@ Route::middleware(['authusers'])->group(function () {
         Route::get('/dashboard/call-logs', [DashboardController::class, 'dashboardCallLogs'])->name('api.dashboard.call-logs');
         Route::get('/dashboard/v2-user-types', [DashboardController::class, 'v2DashboardData'])->name('api.dashboard.v2');
         Route::get('/dashboard/order/{id}', [DashboardController::class, 'orderDetails'])->name('api.dashboard.order');
+        Route::get('/dashboard/customer-app-orders', [DashboardController::class, 'getCustomerAppOrdersPaginated'])->name('api.dashboard.customerAppOrders');
         Route::post('/admin/order/{orderId}/add-nearby-n-users', [\App\Http\Controllers\AdminController::class, 'addNearbyNUsersToOrder'])->name('api.admin.order.addNearbyNUsers');
         Route::post('/admin/order/{orderId}/add-nearby-d-users', [\App\Http\Controllers\AdminController::class, 'addNearbyDUsersToOrder'])->name('api.admin.order.addNearbyDUsers');
         Route::post('/admin/order/{orderId}/add-bulk-notified-vendors', [\App\Http\Controllers\AdminController::class, 'addBulkNotifiedVendors'])->name('api.admin.order.addBulkNotifiedVendors');
+        Route::post('/admin/order/{orderId}/add-vendor/{vendorId}', [\App\Http\Controllers\AdminController::class, 'addVendorToOrder'])->name('api.admin.order.addVendor');
     });
 });
 
