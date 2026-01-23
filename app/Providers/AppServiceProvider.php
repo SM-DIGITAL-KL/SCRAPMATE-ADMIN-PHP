@@ -5,6 +5,11 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL; // ✅ Import URL facade
 
+// Load API helper functions globally
+if (file_exists(__DIR__ . '/../Helpers/api_helpers.php')) {
+    require_once __DIR__ . '/../Helpers/api_helpers.php';
+}
+
 class AppServiceProvider extends ServiceProvider
 {
     /**

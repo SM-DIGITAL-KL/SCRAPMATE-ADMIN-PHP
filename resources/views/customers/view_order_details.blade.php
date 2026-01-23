@@ -415,6 +415,75 @@
                 </div>
             </div>
             
+            {{-- Notified Vendors Section --}}
+            @php
+                $notifiedVendors = [];
+                if (isset($order->notified_vendors) && is_array($order->notified_vendors)) {
+                    $notifiedVendors = $order->notified_vendors;
+                } elseif (isset($order->notified_vendors) && is_object($order->notified_vendors)) {
+                    $notifiedVendors = (array)$order->notified_vendors;
+                }
+            @endphp
+            @if(count($notifiedVendors) > 0)
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5 class="mb-3">Notified Vendors ({{ count($notifiedVendors) }}) <small class="text-muted">- Sorted by distance</small></h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Vendor ID</th>
+                                    <th>Name</th>
+                                    <th>Shop Name</th>
+                                    <th>Mobile</th>
+                                    <th>Distance</th>
+                                    <th>User Type</th>
+                                    <th>App Version</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($notifiedVendors as $index => $vendor)
+                                    @php
+                                        $vendorObj = is_object($vendor) ? $vendor : (object)$vendor;
+                                        $distance = $vendorObj->distance_km ?? null;
+                                        $badgeClass = 'light';
+                                        if ($distance !== null) {
+                                            if ($distance <= 5) $badgeClass = 'success';
+                                            elseif ($distance <= 10) $badgeClass = 'warning';
+                                            else $badgeClass = 'secondary';
+                                        }
+                                    @endphp
+                                    <tr class="{{ $index < 5 ? 'table-success' : '' }}">
+                                        <td>{{ $index + 1 }}</td>
+                                        <td>{{ $vendorObj->id ?? 'N/A' }}</td>
+                                        <td>{{ $vendorObj->name ?? 'N/A' }}</td>
+                                        <td>{{ $vendorObj->shop_name ?? 'N/A' }}</td>
+                                        <td>{{ $vendorObj->mobile ?? 'N/A' }}</td>
+                                        <td>
+                                            @if($distance !== null)
+                                                <span class="badge badge-{{ $badgeClass }}">{{ $distance }} km</span>
+                                            @else
+                                                <span class="badge badge-light">N/A</span>
+                                            @endif
+                                        </td>
+                                        <td><span class="badge badge-secondary">{{ $vendorObj->user_type ?? 'N/A' }}</span></td>
+                                        <td>
+                                            @php
+                                                $appVersion = $vendorObj->app_version ?? 'N/A';
+                                                $versionBadge = $appVersion === 'v2' ? 'primary' : 'secondary';
+                                            @endphp
+                                            <span class="badge badge-{{ $versionBadge }}">{{ $appVersion }}</span>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            @endif
+            
             {{-- Shop Information Section --}}
             <div class="row mt-4">
                 <div class="col-12">

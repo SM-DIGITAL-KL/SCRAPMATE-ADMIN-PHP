@@ -13,7 +13,10 @@
                                 <h4 class="card-title mb-1">Live Scrap Prices</h4>
                                 <p class="text-muted mb-0">Real-time scrap prices from various locations across India</p>
                                 @if(isset($lastUpdated))
-                                    <small class="text-muted"><i class="fa fa-clock-o"></i> {{ $lastUpdated }}</small>
+                                    <small class="text-muted"><i class="fa fa-clock-o"></i> Last Updated: {{ $lastUpdated }}</small>
+                                @endif
+                                @if(isset($nextRefreshTime))
+                                    <br><small class="text-info"><i class="fa fa-refresh"></i> Next Auto-Refresh: <strong>{{ $nextRefreshTime }}</strong> ({{ $nextRefreshTimeFormatted ?? '' }})</small>
                                 @endif
                             </div>
                             <div class="d-flex gap-2">
@@ -128,7 +131,8 @@
                                     • <strong>No Database Required:</strong> Prices are scraped and cached in memory<br>
                                     • <strong>All Data Displayed:</strong> All {{ $totalCount ?? $prices->count() }} items shown on one page<br>
                                     • <strong>Auto-Load:</strong> Prices load automatically on first visit (cached for 1 hour)<br>
-                                    • <strong>Refresh:</strong> Click "Refresh Prices" button to get latest data<br>
+                                    • <strong>Scheduled Refresh:</strong> Prices automatically refresh every 2 hours throughout the day<br>
+                                    • <strong>Manual Refresh:</strong> Click "Refresh Prices" button to get latest data immediately<br>
                                     • <strong>Fast Performance:</strong> Cached data loads instantly, refresh takes 2-5 minutes<br>
                                     • All prices are indicative and may vary based on quality and quantity<br>
                                     • <strong>Sources:</strong> 25+ URLs covering major cities across India

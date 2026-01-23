@@ -977,26 +977,32 @@ function displayOrderDetails(order, orderType) {
             ` : ''}
             
             ${order.notified_vendors && order.notified_vendors.length > 0 ? `
-            <h5 class="mb-3 mt-4">Notified Vendors (${order.notified_vendors.length})</h5>
+            <h5 class="mb-3 mt-4">Notified Vendors (${order.notified_vendors.length}) <small class="text-muted">- Sorted by distance</small></h5>
             <div class="table-responsive">
                 <table class="table table-bordered table-striped">
                     <thead>
                         <tr>
                             <th>Vendor ID</th>
                             <th>Name</th>
+                            <th>Shop Name</th>
                             <th>Mobile</th>
-                            <th>Email</th>
+                            <th>Distance</th>
                             <th>User Type</th>
                             <th>App Version</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${order.notified_vendors.map(vendor => `
-                            <tr>
+                        ${order.notified_vendors.map((vendor, index) => `
+                            <tr class="${index < 5 ? 'table-success' : ''}">
                                 <td>${vendor.id || 'N/A'}</td>
                                 <td>${vendor.name || 'N/A'}</td>
+                                <td>${vendor.shop_name || 'N/A'}</td>
                                 <td>${vendor.mobile || 'N/A'}</td>
-                                <td>${vendor.email || 'N/A'}</td>
+                                <td>
+                                    ${vendor.distance_km !== null && vendor.distance_km !== undefined 
+                                        ? `<span class="badge badge-${vendor.distance_km <= 5 ? 'success' : vendor.distance_km <= 10 ? 'warning' : 'secondary'}">${vendor.distance_km} km</span>` 
+                                        : '<span class="badge badge-light">N/A</span>'}
+                                </td>
                                 <td><span class="badge badge-secondary">${vendor.user_type || 'N/A'}</span></td>
                                 <td><span class="badge badge-${vendor.app_version === 'v2' ? 'primary' : 'secondary'}">${vendor.app_version || 'N/A'}</span></td>
                             </tr>

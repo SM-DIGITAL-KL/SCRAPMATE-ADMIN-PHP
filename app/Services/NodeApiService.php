@@ -10,25 +10,29 @@ use App\Helpers\EnvReader;
 class NodeApiService
 {
     private $baseUrl;
+    private $nodeBaseUrl; // Base URL without /api (for /dologin etc.)
     private $apiKey;
     private $cacheEnabled;
     private $cacheTtl; // Time to live in minutes
 
     public function __construct()
     {
-        // Read from env.txt first, fallback to .env, then env() helper
-        // NODE_URL should be the base server URL (AWS Lambda Function URL)
-        // We append /api to it for API endpoints
+        // Use centralized API configuration service
+        $apiConfig = ApiConfigurationService::getInstance();
         
-        // Production Lambda Function URL (commented out for local development)
-        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-        
-        // Local development URL
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
-        $this->baseUrl = rtrim($nodeUrl, '/') . '/api';
-        $this->apiKey = EnvReader::get('NODE_API_KEY', env('NODE_API_KEY', 'your-api-key-here'));
+        $this->nodeBaseUrl = $apiConfig->getNodeBaseUrl();
+        $this->baseUrl = $apiConfig->getNodeApiUrl();
+        $this->apiKey = $apiConfig->getNodeApiKey();
         $this->cacheEnabled = EnvReader::get('API_CACHE_ENABLED', env('API_CACHE_ENABLED', true));
         $this->cacheTtl = EnvReader::get('API_CACHE_TTL', env('API_CACHE_TTL', 30)); // Default 30 minutes
+    }
+
+    /**
+     * Get the Node base URL (without /api). Use for /dologin etc.
+     */
+    public function getNodeBaseUrl()
+    {
+        return $this->nodeBaseUrl;
     }
     
     /**
@@ -720,10 +724,9 @@ class NodeApiService
 
             // Provide more specific error message
             if ($isConnectionError) {
-                // Production Lambda Function URL (commented out for local development)
-                // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-                // Local development URL
-                $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
+                // Use centralized configuration for error messages
+                $apiConfig = ApiConfigurationService::getInstance();
+                $nodeUrl = $apiConfig->getNodeBaseUrl();
                 $errorMsg = "Cannot connect to API server. Please ensure Node.js API is accessible at {$nodeUrl}. Error: {$errorMsg}";
             } elseif (strpos(strtolower($errorMsg), 'upload') !== false || strpos(strtolower($errorMsg), 'image') !== false) {
                 $errorMsg = "The category image failed to upload: {$errorMsg}";

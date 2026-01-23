@@ -1127,18 +1127,6 @@ class AdminController extends Controller
     {
         Log::info('🔵 AdminController::set_permission called', ['id' => $id]);
         $endpoint = '/admin/set_permission' . ($id ? '/' . $id : '');
-        // Production Lambda Function URL (commented out for local development)
-        // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-        // Local development URL
-        $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
-        $nodeApiUrl = rtrim($nodeUrl, '/') . '/api';
-        $fullUrl = $nodeApiUrl . $endpoint;
-        Log::info('🔵 Calling Node.js API', [
-            'endpoint' => $endpoint,
-            'fullUrl' => $fullUrl,
-            'baseUrl' => $nodeApiUrl
-        ]);
-        
         $apiResponse = $this->nodeApi->get($endpoint);
         
         $data = $apiResponse['data'] ?? null;

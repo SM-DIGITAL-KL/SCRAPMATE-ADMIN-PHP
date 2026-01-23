@@ -49,14 +49,9 @@ class LoginController extends Controller
         
         // Call Node.js API for authentication
         // Note: Login endpoint is at root level, not under /api
+        // Use same NODE_URL as NodeApiService (env.txt / .env / NODE_URL)
         try {
-            // Read from env.txt first, fallback to .env, then env() helper
-            // NODE_URL should be the base server URL (AWS Lambda Function URL)
-            // Production Lambda Function URL (commented out for local development)
-            // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-            // Local development URL
-            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
-            $loginUrl = rtrim($nodeUrl, '/') . '/dologin';
+            $loginUrl = $this->nodeApi->getNodeBaseUrl() . '/dologin';
             
             // Get API key from environment (read from env.txt)
             $apiKey = EnvReader::get('NODE_API_KEY', env('NODE_API_KEY', 'your-api-key-here'));
@@ -103,7 +98,7 @@ class LoginController extends Controller
                 'has_password' => !empty($request['password']),
                 'has_api_key' => !empty($apiKey),
                 'api_key_preview' => !empty($apiKey) ? substr($apiKey, 0, 10) . '...' : 'empty',
-                'node_url_source' => $nodeUrl,
+                'node_base_url' => $this->nodeApi->getNodeBaseUrl(),
                 'env_txt_exists' => $envTxtExists,
                 'env_exists' => $envExists,
                 'env_txt_value' => $envTxtValue,
@@ -264,11 +259,7 @@ class LoginController extends Controller
                 }
             }
         } catch (\Exception $e) {
-            // Production Lambda Function URL (commented out for local development)
-            // $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'https://gpn6vt3mlkm6zq7ibxdtu6bphi0onexr.lambda-url.ap-south-1.on.aws'));
-            // Local development URL
-            $nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', 'http://localhost:3000'));
-            $loginUrl = rtrim($nodeUrl, '/') . '/dologin';
+            $loginUrl = $this->nodeApi->getNodeBaseUrl() . '/dologin';
             
             $errorDetails = [
                 'method' => 'POST',

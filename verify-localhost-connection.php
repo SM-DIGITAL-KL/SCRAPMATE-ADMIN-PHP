@@ -15,6 +15,12 @@ $kernel->bootstrap();
 
 use App\Helpers\EnvReader;
 use Illuminate\Support\Facades\Http;
+use App\Services\ApiConfigurationService;
+
+// Load API configuration from centralized service
+$apiConfig = ApiConfigurationService::getInstance();
+$nodeUrl = $apiConfig->getNodeBaseUrl();
+$nodeApiKey = $apiConfig->getNodeApiKey();
 
 echo "\n" . str_repeat("=", 80) . "\n";
 echo "🔍 LOCALHOST CONNECTION VERIFICATION\n";
@@ -24,9 +30,10 @@ echo str_repeat("=", 80) . "\n\n";
 echo "📋 STEP 1: Checking Environment Configuration\n";
 echo str_repeat("-", 80) . "\n";
 
-$nodeUrl = EnvReader::get('NODE_URL', env('NODE_URL', null));
-$nodeApiKey = EnvReader::get('NODE_API_KEY', env('NODE_API_KEY', null));
+$nodeUrl = $apiConfig->getNodeBaseUrl();
+$nodeApiKey = $apiConfig->getNodeApiKey();
 
+// Display configuration info
 echo "   NODE_URL: " . ($nodeUrl ?: 'NOT SET') . "\n";
 echo "   NODE_API_KEY: " . ($nodeApiKey ? 'SET (' . substr($nodeApiKey, 0, 10) . '...)' : 'NOT SET') . "\n";
 
@@ -117,7 +124,7 @@ try {
     echo "      1. Make sure Node.js server is running\n";
     echo "      2. Check if port 3000 is correct\n";
     echo "      3. Run: cd SCRAPMATE-NODE-LAMBDA && npm start\n";
-    echo "      4. Verify server is accessible at: http://localhost:3000\n";
+    echo "      4. Verify server is accessible at: {$nodeUrl}\n";
     
 } catch (\Exception $e) {
     echo "   ❌ ERROR!\n";
@@ -156,7 +163,7 @@ echo "📝 QUICK CHECKLIST:\n";
 echo "   [ ] Node.js server running on port 3000\n";
 echo "   [ ] NODE_URL configured in env.txt or .env\n";
 echo "   [ ] NODE_API_KEY configured\n";
-echo "   [ ] Can access http://localhost:3000/api/category_img_list\n";
+echo "   [ ] Can access {$nodeUrl}/api/category_img_list\n";
 echo "   [ ] PHP server restarted after configuration changes\n";
 echo "\n";
 
