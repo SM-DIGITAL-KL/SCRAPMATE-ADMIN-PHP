@@ -62,8 +62,8 @@
 {{-- COMMON DELETE MODAL --}}
 <script type="text/javascript">
     function custom_delete(path) {
-        var url = "<?=route('login')?>";
-        var fullurl = url+path;
+        var url = "<?= url('/') ?>";
+        var fullurl = (path.indexOf('/') === 0) ? url + path : url + '/' + path;
         $("#conf_true").attr("href", fullurl);
     }
 </script>

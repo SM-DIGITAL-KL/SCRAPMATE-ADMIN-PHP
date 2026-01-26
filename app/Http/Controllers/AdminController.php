@@ -205,6 +205,16 @@ class AdminController extends Controller
         $data['pagename'] = 'Users';
         return view('admin/users', $data);
     }
+
+    /**
+     * Users page: customers (V1 & V2 app only) with same UI as vendors manage.
+     * Replaces /users display per request; lists customers from v1 and v2 app type.
+     */
+    public function usersCustomers()
+    {
+        $data['pagename'] = 'Customers (V1 & V2)';
+        return view('admin.users_customers', $data);
+    }
     
     public function b2bUsers(Request $request)
     {

@@ -27,7 +27,7 @@
             <span class="nav-text">Users Manage</span>
             </a>
             <ul aria-expanded="false">
-                <li><a href="{{ route('users') }}">User Manage</a></li>
+                <li><a href="{{ route('users') }}">Customers (V1 & V2)</a></li>
                 <li><a href="{{ route('set_permission') }}">Set Permission</a></li>
             </ul>
         </li>

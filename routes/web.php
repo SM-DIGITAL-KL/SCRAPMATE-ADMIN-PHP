@@ -53,8 +53,9 @@ Route::middleware(['authusers'])->group(function () {
     Route::get('/subcategories/{id}/delete', [CategoryController::class, 'deleteSubcategory'])->name('deleteSubcategory');
     Route::post('/subcategories/{id}/approve', [CategoryController::class, 'approveRejectSubcategory'])->name('approveRejectSubcategory');
 
-    // Users
-    Route::get('/users', [\App\Http\Controllers\AdminController::class, 'users'])->name('users');
+    // Users (Customers V1 & V2 - same UI as vendors manage)
+    Route::get('/users', [\App\Http\Controllers\AdminController::class, 'usersCustomers'])->name('users');
+    Route::get('/view_users_customers', [CustomerController::class, 'view_users_customers'])->name('view_users_customers');
     Route::get('/view_users', [\App\Http\Controllers\AdminController::class, 'view_users'])->name('view_users');
     Route::match(['get', 'post'], '/manage_users/{id?}', [\App\Http\Controllers\AdminController::class, 'manage_users'])->name('manage_users');
     Route::match(['get', 'post'], '/user_password_reset/{id}', [\App\Http\Controllers\AdminController::class, 'user_password_reset'])->name('user_password_reset');
@@ -99,6 +100,8 @@ Route::middleware(['authusers'])->group(function () {
     // Customer & Order Routes
     Route::get('/customers', [CustomerController::class, 'customers'])->name('customers');
     Route::get('/view_customers', [CustomerController::class, 'view_customers'])->name('view_customers');
+    Route::get('/show_recent_orders/{id?}', [CustomerController::class, 'show_recent_orders'])->name('show_recent_orders');
+    Route::get('/del_customer/{id}', [CustomerController::class, 'del_customer'])->name('del_customer');
     Route::get('/orders', [CustomerController::class, 'orders'])->name('orders');
     Route::get('/view_orders', [CustomerController::class, 'view_orders'])->name('view_orders');
     Route::get('/view_order_details/{id}', [CustomerController::class, 'view_order_details'])->name('view_order_details');

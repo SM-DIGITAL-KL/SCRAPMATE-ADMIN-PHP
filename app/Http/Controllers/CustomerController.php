@@ -88,6 +88,184 @@ class CustomerController extends Controller
         
         return view('customers/orders', $data);
     }
+    /**
+     * DataTables server-side endpoint for Users (Customers V1 & V2) page.
+     * Same UI as vendors manage / users. Returns customers with app_type v1 or v2 only.
+     */
+    public function view_users_customers(Request $request)
+    {
+        // For DataTables server-side processing, we need to fetch all data first
+        // then let DataTables handle pagination on the client side
+        $params = ['page' => 1, 'limit' => 99999];
+        
+        \Illuminate\Support\Facades\Log::info('🔵 CustomerController::view_users_customers called', [
+            'params' => $params,
+            'endpoint' => '/admin/customers',
+            'datatables_params' => $request->all()
+        ]);
+        
+        // Use longer timeout for large data fetches (60 seconds)
+        $apiResponse = $this->nodeApi->get('/admin/customers', $params, 60);
+
+        \Illuminate\Support\Facades\Log::info('🔵 CustomerController::view_users_customers API response', [
+            'status' => $apiResponse['status'] ?? 'none',
+            'msg' => $apiResponse['msg'] ?? 'no message',
+            'has_data' => isset($apiResponse['data']),
+            'data_type' => isset($apiResponse['data']) ? gettype($apiResponse['data']) : 'null',
+        ]);
+
+        $data = $apiResponse['data'] ?? null;
+        $usersRaw = $data['users'] ?? null;
+
+        if ($apiResponse['status'] !== 'success' || !$usersRaw || !is_array($usersRaw)) {
+            \Illuminate\Support\Facades\Log::warning('⚠️ view_users_customers: no data or API error', [
+                'status' => $apiResponse['status'] ?? 'none',
+                'has_data' => !empty($data),
+                'has_users' => !empty($usersRaw),
+                'users_count' => is_array($usersRaw) ? count($usersRaw) : 0,
+                'users_type' => gettype($usersRaw),
+                'msg' => $apiResponse['msg'] ?? '',
+                'error' => $apiResponse['error'] ?? null,
+            ]);
+            return datatables()->of(collect([]))
+                ->addIndexColumn()
+                ->addColumn('app_type', function ($d) { return ''; })
+                ->addColumn('date_joined', function ($d) { return ''; })
+                ->addColumn('address', function ($d) { return ''; })
+                ->addColumn('is_contacted', function ($d) { return ''; })
+                ->addColumn('action', function ($d) { return ''; })
+                ->rawColumns(['app_type', 'action'])
+                ->make(true);
+        }
+
+        $users = collect($usersRaw);
+        $normalize = function ($u) {
+            $arr = is_array($u) ? $u : (array) $u;
+            $customer = $arr['customer'] ?? null;
+            $cust = is_array($customer) ? $customer : (array) ($customer ?? []);
+            $address = $arr['address'] ?? ($cust['address'] ?? '');
+            $createdAt = $arr['created_at'] ?? ($cust['created_at'] ?? null);
+            $isContacted = $arr['is_contacted'] ?? $cust['is_contacted'] ?? false;
+            if (is_string($isContacted)) {
+                $isContacted = in_array(strtolower(trim($isContacted)), ['1', 'true', 'yes'], true);
+            }
+            return [
+                'id' => $arr['id'] ?? null,
+                'name' => $arr['name'] ?? 'N/A',
+                'email' => $arr['email'] ?? ($cust['email'] ?? 'N/A'),
+                'contact' => $arr['contact'] ?? ($arr['mob_num'] ?? ($cust['contact'] ?? 'N/A')),
+                'app_version' => isset($arr['app_version']) ? trim((string) $arr['app_version']) : '',
+                'address' => is_string($address) ? trim($address) : '',
+                'created_at' => $createdAt,
+                'is_contacted' => (bool) $isContacted,
+            ];
+        };
+
+        // Filter to v1 and v2 only (case-insensitive)
+        $filtered = $users->filter(function ($u) use ($normalize) {
+            $n = $normalize($u);
+            $v = $n['app_version'];
+            $vLower = strtolower($v);
+            if ($v === '' || $vLower === 'v1' || $vLower === 'v2') {
+                return true;
+            }
+            return false;
+        })->values();
+
+        // Sort: V2 users first (newest first), then V1 users (newest first)
+        $filtered = $filtered->sort(function ($a, $b) use ($normalize) {
+            $na = $normalize($a);
+            $nb = $normalize($b);
+            $isV2A = (strtolower(trim($na['app_version'] ?? '')) === 'v2') ? 1 : 0;
+            $isV2B = (strtolower(trim($nb['app_version'] ?? '')) === 'v2') ? 1 : 0;
+            if ($isV2A !== $isV2B) {
+                return $isV2B - $isV2A; // V2 first, then V1
+            }
+            $tsA = 0;
+            $tsB = 0;
+            if (!empty($na['created_at'])) {
+                try { $tsA = (new \DateTime($na['created_at']))->getTimestamp(); } catch (\Exception $e) {}
+            }
+            if (!empty($nb['created_at'])) {
+                try { $tsB = (new \DateTime($nb['created_at']))->getTimestamp(); } catch (\Exception $e) {}
+            }
+            return $tsB - $tsA; // newest first within each app type
+        })->values();
+
+        $list = $filtered->map(function ($u) use ($normalize) {
+            $n = $normalize($u);
+            $dateJoined = '';
+            if (!empty($n['created_at'])) {
+                try {
+                    $dt = new \DateTime($n['created_at']);
+                    $dateJoined = $dt->format('d-M-Y');
+                } catch (\Exception $e) {
+                    $dateJoined = $n['created_at'];
+                }
+            }
+            return (object) [
+                'id' => $n['id'],
+                'name' => $n['name'],
+                'email' => $n['email'],
+                'phone' => $n['contact'],
+                'app_version' => $n['app_version'] !== '' ? strtolower($n['app_version']) : 'v1',
+                'address' => $n['address'],
+                'date_joined' => $dateJoined,
+                'is_contacted' => $n['is_contacted'],
+            ];
+        });
+
+        \Illuminate\Support\Facades\Log::info('✅ view_users_customers: processing data', [
+            'total_from_api' => $users->count(),
+            'after_v1_v2_filter' => $list->count(),
+            'first_user_sample' => $list->first(),
+        ]);
+
+        return datatables()->of($list)
+            ->addIndexColumn()
+            ->addColumn('app_type', function ($d) {
+                $v = strtolower($d->app_version ?? 'v1');
+                if ($v === 'v2') {
+                    return '<span class="badge bg-primary">V2</span>';
+                }
+                return '<span class="badge bg-secondary">V1</span>';
+            })
+            ->addColumn('date_joined', function ($d) {
+                return e($d->date_joined ?? '—');
+            })
+            ->addColumn('address', function ($d) {
+                $addr = trim($d->address ?? '');
+                if ($addr === '') {
+                    return '—';
+                }
+                if (strlen($addr) > 60) {
+                    return '<span title="' . e($addr) . '">' . e(substr($addr, 0, 57)) . '…</span>';
+                }
+                return e($addr);
+            })
+            ->addColumn('is_contacted', function ($d) {
+                $contacted = $d->is_contacted ?? false;
+                if ($contacted) {
+                    return '<span class="badge bg-success">Yes</span>';
+                }
+                return '<span class="badge bg-secondary">No</span>';
+            })
+            ->addColumn('action', function ($d) {
+                $id = (int) ($d->id ?? 0);
+                return '<div class="dropdown">
+                    <button type="button" class="btn btn-success light sharp" data-bs-toggle="dropdown">
+                        <svg width="20px" height="20px" viewBox="0 0 24 24"><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><rect x="0" y="0" width="24" height="24"/><circle fill="#000000" cx="5" cy="12" r="2"/><circle fill="#000000" cx="12" cy="12" r="2"/><circle fill="#000000" cx="19" cy="12" r="2"/></g></svg>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a class="dropdown-item" href="javascript:;" onclick="large_modal(' . $id . ',\'show_recent_orders\',\'Recent Orders\')" data-bs-toggle="modal" data-bs-target=".bd-example-modal-lg">Recent Orders</a>
+                        <a class="dropdown-item" href="javascript:;" onclick="custom_delete(\'/del_customer/' . $id . '\')" data-bs-toggle="modal" data-bs-target=".bd-example-modal-sm">Delete</a>
+                    </div>
+                </div>';
+            })
+            ->rawColumns(['app_type', 'address', 'is_contacted', 'action'])
+            ->make(true);
+    }
+
     public function view_customers()
     {
         Log::info('🔵 CustomerController::view_customers called - attempting to call Node.js API');
