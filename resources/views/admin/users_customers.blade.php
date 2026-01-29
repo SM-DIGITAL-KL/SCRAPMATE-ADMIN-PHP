@@ -8,8 +8,11 @@
                 <div class="card">
                     <div class="card-body">
                         @include('layouts.flashmessage')
-                        <div class="text-end">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <span class="text-muted small">Customers (V1 & V2 app only)</span>
+                            <a href="{{ route('users.exportExcel') }}" class="btn btn-success btn-sm" target="_blank" rel="noopener">
+                                <i class="fas fa-file-excel me-1"></i> Download XLSX
+                            </a>
                         </div>
                         <hr>
                         <div class="card-body p-0" >

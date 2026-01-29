@@ -12,6 +12,11 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 
 use App\Services\NodeApiService;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
 
 class CustomerController extends Controller
 {
@@ -264,6 +269,175 @@ class CustomerController extends Controller
             })
             ->rawColumns(['app_type', 'address', 'is_contacted', 'action'])
             ->make(true);
+    }
+
+    /**
+     * Export total users (customers V1 & V2) to XLSX.
+     * Same data as /users page (view_users_customers).
+     */
+    public function exportTotalUsersExcel(Request $request)
+    {
+        try {
+            $params = ['page' => 1, 'limit' => 99999];
+            $apiResponse = $this->nodeApi->get('/admin/customers', $params, 60);
+
+            $data = $apiResponse['data'] ?? null;
+            $usersRaw = $data['users'] ?? null;
+
+            if ($apiResponse['status'] !== 'success' || !$usersRaw || !is_array($usersRaw)) {
+                Log::warning('exportTotalUsersExcel: no data or API error', [
+                    'status' => $apiResponse['status'] ?? 'none',
+                    'has_users' => !empty($usersRaw),
+                ]);
+                return redirect()->route('users')->with('error', 'Failed to fetch data for export');
+            }
+
+            $users = collect($usersRaw);
+            $normalize = function ($u) {
+                $arr = is_array($u) ? $u : (array) $u;
+                $customer = $arr['customer'] ?? null;
+                $cust = is_array($customer) ? $customer : (array) ($customer ?? []);
+                $address = $arr['address'] ?? ($cust['address'] ?? '');
+                $createdAt = $arr['created_at'] ?? ($cust['created_at'] ?? null);
+                $isContacted = $arr['is_contacted'] ?? $cust['is_contacted'] ?? false;
+                if (is_string($isContacted)) {
+                    $isContacted = in_array(strtolower(trim($isContacted)), ['1', 'true', 'yes'], true);
+                }
+                return [
+                    'id' => $arr['id'] ?? null,
+                    'name' => $arr['name'] ?? 'N/A',
+                    'email' => $arr['email'] ?? ($cust['email'] ?? 'N/A'),
+                    'contact' => $arr['contact'] ?? ($arr['mob_num'] ?? ($cust['contact'] ?? 'N/A')),
+                    'app_version' => isset($arr['app_version']) ? trim((string) $arr['app_version']) : '',
+                    'address' => is_string($address) ? trim($address) : '',
+                    'created_at' => $createdAt,
+                    'is_contacted' => (bool) $isContacted,
+                ];
+            };
+
+            $filtered = $users->filter(function ($u) use ($normalize) {
+                $n = $normalize($u);
+                $v = $n['app_version'];
+                $vLower = strtolower($v);
+                if ($v === '' || $vLower === 'v1' || $vLower === 'v2') {
+                    return true;
+                }
+                return false;
+            })->values();
+
+            $filtered = $filtered->sort(function ($a, $b) use ($normalize) {
+                $na = $normalize($a);
+                $nb = $normalize($b);
+                $isV2A = (strtolower(trim($na['app_version'] ?? '')) === 'v2') ? 1 : 0;
+                $isV2B = (strtolower(trim($nb['app_version'] ?? '')) === 'v2') ? 1 : 0;
+                if ($isV2A !== $isV2B) {
+                    return $isV2B - $isV2A;
+                }
+                $tsA = 0;
+                $tsB = 0;
+                if (!empty($na['created_at'])) {
+                    try { $tsA = (new \DateTime($na['created_at']))->getTimestamp(); } catch (\Exception $e) {}
+                }
+                if (!empty($nb['created_at'])) {
+                    try { $tsB = (new \DateTime($nb['created_at']))->getTimestamp(); } catch (\Exception $e) {}
+                }
+                return $tsB - $tsA;
+            })->values();
+
+            $list = $filtered->map(function ($u) use ($normalize) {
+                $n = $normalize($u);
+                $dateJoined = '';
+                if (!empty($n['created_at'])) {
+                    try {
+                        $dt = new \DateTime($n['created_at']);
+                        $dateJoined = $dt->format('d-M-Y');
+                    } catch (\Exception $e) {
+                        $dateJoined = $n['created_at'];
+                    }
+                }
+                return (object) [
+                    'name' => $n['name'],
+                    'email' => $n['email'],
+                    'phone' => $n['contact'],
+                    'app_version' => $n['app_version'] !== '' ? strtolower($n['app_version']) : 'v1',
+                    'address' => $n['address'],
+                    'date_joined' => $dateJoined,
+                    'is_contacted' => $n['is_contacted'],
+                ];
+            });
+
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+
+            $headers = ['SL NO', 'NAME', 'EMAIL', 'PHONE', 'APP', 'DATE JOINED', 'ADDRESS', 'IS CONTACTED'];
+            $sheet->fromArray($headers, null, 'A1');
+
+            $headerStyle = [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => [
+                    'fillType' => Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '6C5CE7'],
+                ],
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                ],
+            ];
+            $sheet->getStyle('A1:H1')->applyFromArray($headerStyle);
+
+            $sheet->getColumnDimension('A')->setWidth(10);
+            $sheet->getColumnDimension('B')->setWidth(25);
+            $sheet->getColumnDimension('C')->setWidth(30);
+            $sheet->getColumnDimension('D')->setWidth(15);
+            $sheet->getColumnDimension('E')->setWidth(8);
+            $sheet->getColumnDimension('F')->setWidth(14);
+            $sheet->getColumnDimension('G')->setWidth(50);
+            $sheet->getColumnDimension('H')->setWidth(14);
+
+            $row = 2;
+            $slNo = 1;
+            foreach ($list as $d) {
+                $sheet->setCellValue('A' . $row, $slNo);
+                $sheet->setCellValue('B' . $row, $d->name ?? 'N/A');
+                $sheet->setCellValue('C' . $row, $d->email ?? 'N/A');
+                $sheet->setCellValue('D' . $row, $d->phone ?? 'N/A');
+                $sheet->setCellValue('E' . $row, strtoupper($d->app_version ?? 'v1'));
+                $sheet->setCellValue('F' . $row, $d->date_joined ?? '—');
+                $sheet->setCellValue('G' . $row, $d->address ?? '—');
+                $sheet->setCellValue('H' . $row, ($d->is_contacted ?? false) ? 'Yes' : 'No');
+                $sheet->getStyle('G' . $row)->getAlignment()->setWrapText(true);
+                $row++;
+                $slNo++;
+            }
+
+            $lastRow = $row - 1;
+            if ($lastRow >= 1) {
+                $styleArray = [
+                    'borders' => [
+                        'allBorders' => [
+                            'borderStyle' => Border::BORDER_THIN,
+                            'color' => ['rgb' => 'CCCCCC'],
+                        ],
+                    ],
+                ];
+                $sheet->getStyle('A1:H' . $lastRow)->applyFromArray($styleArray);
+            }
+
+            $filename = 'total_users_' . date('Y-m-d_His') . '.xlsx';
+            $writer = new Xlsx($spreadsheet);
+            $tempFile = tempnam(sys_get_temp_dir(), 'total_users_');
+            $writer->save($tempFile);
+
+            return response()->download($tempFile, $filename, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ])->deleteFileAfterSend(true);
+        } catch (\Exception $e) {
+            Log::error('Error exporting total users to Excel', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return redirect()->route('users')->with('error', 'Failed to export: ' . $e->getMessage());
+        }
     }
 
     public function view_customers()

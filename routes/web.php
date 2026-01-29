@@ -55,6 +55,7 @@ Route::middleware(['authusers'])->group(function () {
 
     // Users (Customers V1 & V2 - same UI as vendors manage)
     Route::get('/users', [\App\Http\Controllers\AdminController::class, 'usersCustomers'])->name('users');
+    Route::get('/users/export-excel', [CustomerController::class, 'exportTotalUsersExcel'])->name('users.exportExcel');
     Route::get('/view_users_customers', [CustomerController::class, 'view_users_customers'])->name('view_users_customers');
     Route::get('/view_users', [\App\Http\Controllers\AdminController::class, 'view_users'])->name('view_users');
     Route::match(['get', 'post'], '/manage_users/{id?}', [\App\Http\Controllers\AdminController::class, 'manage_users'])->name('manage_users');
