@@ -124,16 +124,34 @@
                                         @php
                                             $status = isset($order->status) ? (int)$order->status : 0;
                                             $statusText = match($status) {
-                                                0 => 'Request Pending',
-                                                1 => 'Accepted',
-                                                2 => 'Processing',
-                                                3 => 'Out for Delivery',
-                                                4 => 'Delivered',
-                                                5 => 'Cancelled',
+                                                1 => 'Scheduled',
+                                                2 => 'Accepted',
+                                                3 => 'In Progress',
+                                                4 => 'Picked Up',
+                                                5 => 'Completed',
+                                                6 => 'Accepted by Other',
+                                                7 => 'Cancelled',
                                                 default => 'Unknown'
                                             };
+                                            $statusBadgeClass = match($status) {
+                                                1 => 'bg-secondary',
+                                                2 => 'bg-primary',
+                                                3 => 'bg-info',
+                                                4 => 'bg-warning',
+                                                5 => 'bg-success',
+                                                6 => 'bg-dark',
+                                                7 => 'bg-danger',
+                                                default => 'bg-secondary'
+                                            };
                                         @endphp
-                                        {{ $statusText }}
+                                        <span class="badge {{ $statusBadgeClass }}">{{ $statusText }}</span>
+                                        
+                                        {{-- Show Revert to Scheduled button if status is Accepted (2) --}}
+                                        @if($status === 2)
+                                            <button type="button" class="btn btn-warning btn-sm ms-2" data-bs-toggle="modal" data-bs-target="#revertToScheduledModal">
+                                                <i class="fa fa-undo"></i> Revert to Scheduled
+                                            </button>
+                                        @endif
                                     </td>
                                 </tr>
                                 <tr>
@@ -544,6 +562,108 @@
                     </div>
                 </div>
             </div>
+            
+            {{-- Revert to Scheduled Modal --}}
+            @if(isset($order->status) && (int)$order->status === 2)
+            <div class="modal fade" id="revertToScheduledModal" tabindex="-1" aria-labelledby="revertToScheduledModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="revertToScheduledModalLabel">
+                                <i class="fa fa-undo text-warning"></i> Revert Order to Scheduled
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-warning">
+                                <i class="fa fa-exclamation-triangle"></i> 
+                                <strong>Warning:</strong> This will revert the order from <strong>Accepted</strong> back to <strong>Scheduled</strong> status.
+                            </div>
+                            <p>
+                                <strong>Order ID:</strong> {{ $order->id ?? 'N/A' }}<br>
+                                <strong>Order Number:</strong> {{ $order->order_number ?? ($order->order_no ?? 'N/A') }}
+                            </p>
+                            <p class="text-muted">
+                                When you revert this order:
+                            </p>
+                            <ul class="text-muted">
+                                <li>The order will become available for all nearby vendors to accept</li>
+                                <li>The currently assigned vendor will be removed</li>
+                                <li>All previously notified vendors will receive a fresh notification</li>
+                                <li>SMS notifications will be sent to all vendors</li>
+                            </ul>
+                            <div class="mb-3">
+                                <label for="adminNotes" class="form-label">Admin Notes (optional)</label>
+                                <textarea class="form-control" id="adminNotes" rows="3" placeholder="Add notes about why this order is being reverted..."></textarea>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-warning" id="confirmRevertBtn" onclick="revertOrderToScheduled()">
+                                <i class="fa fa-undo"></i> Confirm Revert to Scheduled
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                function revertOrderToScheduled() {
+                    const orderId = '{{ $order->id ?? '' }}';
+                    const notes = document.getElementById('adminNotes').value;
+                    
+                    if (!orderId) {
+                        alert('Error: Order ID not found');
+                        return;
+                    }
+                    
+                    // Disable button to prevent double submission
+                    const btn = document.getElementById('confirmRevertBtn');
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+                    
+                    // Make API call to Node.js backend
+                    fetch('{{ env('NODE_API_URL', 'http://localhost:3001') }}/admin/order/' + orderId + '/status', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'api-key': '{{ env('NODE_API_KEY', '') }}'
+                        },
+                        body: JSON.stringify({
+                            status: 1, // Scheduled
+                            notes: notes
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // Show success message
+                            alert('Order successfully reverted to Scheduled!\n\n' + 
+                                  'Push notifications sent: ' + (data.data?.notifications?.pushSent || 0) + '\n' +
+                                  'SMS notifications sent: ' + (data.data?.notifications?.smsSent || 0));
+                            
+                            // Close modal
+                            const modal = bootstrap.Modal.getInstance(document.getElementById('revertToScheduledModal'));
+                            modal.hide();
+                            
+                            // Reload page to show updated status
+                            location.reload();
+                        } else {
+                            alert('Error: ' + (data.msg || 'Failed to revert order status'));
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fa fa-undo"></i> Confirm Revert to Scheduled';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error: ' + error.message);
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fa fa-undo"></i> Confirm Revert to Scheduled';
+                    });
+                }
+            </script>
+            @endif
+            
         @else
             <div class="alert alert-warning">
                 <p>Order details not found.</p>

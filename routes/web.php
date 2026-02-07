@@ -175,6 +175,12 @@ Route::middleware(['authusers'])->group(function () {
         Route::post('/admin/order/{orderId}/add-nearby-d-users', [\App\Http\Controllers\AdminController::class, 'addNearbyDUsersToOrder'])->name('api.admin.order.addNearbyDUsers');
         Route::post('/admin/order/{orderId}/add-bulk-notified-vendors', [\App\Http\Controllers\AdminController::class, 'addBulkNotifiedVendors'])->name('api.admin.order.addBulkNotifiedVendors');
         Route::post('/admin/order/{orderId}/add-vendor/{vendorId}', [\App\Http\Controllers\AdminController::class, 'addVendorToOrder'])->name('api.admin.order.addVendor');
+        
+        // Order Management Routes (Admin)
+        Route::post('/admin/order/{orderId}/status', [DashboardController::class, 'updateOrderStatus'])->name('api.admin.order.updateStatus');
+        Route::post('/admin/order/{orderId}/assign-vendor', [DashboardController::class, 'assignVendorToOrder'])->name('api.admin.order.assignVendor');
+        Route::get('/admin/vendors/search', [DashboardController::class, 'searchVendors'])->name('api.admin.vendors.search');
+        Route::get('/admin/order/{orderId}/available-vendors', [DashboardController::class, 'getAvailableVendorsForOrder'])->name('api.admin.order.availableVendors');
     });
 });
 

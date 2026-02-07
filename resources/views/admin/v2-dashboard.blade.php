@@ -1086,6 +1086,141 @@ function displayOrderDetails(order, orderType) {
                 return '';
             })()}
             
+            <!-- Order Status Management -->
+            <div class="card mt-4 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fa fa-cog"></i> Order Status Management</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <label class="form-label"><strong>Current Status:</strong></label>
+                            <div id="currentStatusDisplay">
+                                <span class="badge badge-${statusColor} badge-lg" style="font-size: 1rem; padding: 8px 16px;">${status}</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label"><strong>Update Status:</strong></label>
+                            <div class="input-group">
+                                <select id="orderStatusSelect" class="form-control">
+                                    <option value="1" ${order.status == 1 ? 'selected' : ''}>1 - Scheduled</option>
+                                    <option value="2" ${order.status == 2 ? 'selected' : ''}>2 - Accepted</option>
+                                    <option value="3" ${order.status == 3 ? 'selected' : ''}>3 - In Progress</option>
+                                    <option value="4" ${order.status == 4 ? 'selected' : ''}>4 - Picked Up</option>
+                                    <option value="5" ${order.status == 5 ? 'selected' : ''}>5 - Completed</option>
+                                    <option value="6" ${order.status == 6 ? 'selected' : ''}>6 - Accepted by Other</option>
+                                    <option value="7" ${order.status == 7 ? 'selected' : ''}>7 - Cancelled</option>
+                                </select>
+                                <div class="input-group-append">
+                                    <button class="btn btn-primary" onclick="updateOrderStatus(${order.id})">
+                                        <i class="fa fa-save"></i> Update
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label"><strong>Admin Notes (optional):</strong></label>
+                        <textarea id="orderStatusNotes" class="form-control" rows="2" placeholder="Add notes about this status change..."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Vendor Assignment -->
+            <div class="card mt-4 border-success">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fa fa-user-plus"></i> Vendor Assignment</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label"><strong>Search Vendor:</strong></label>
+                            <div class="input-group">
+                                <input type="text" id="vendorSearchInput" class="form-control" placeholder="Enter name, mobile, or shop name...">
+                                <div class="input-group-append">
+                                    <button class="btn btn-success" onclick="searchVendors()">
+                                        <i class="fa fa-search"></i> Search
+                                    </button>
+                                </div>
+                            </div>
+                            <small class="text-muted">Min 2 characters required</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label"><strong>Filter by Type:</strong></label>
+                            <select id="vendorTypeFilter" class="form-control">
+                                <option value="">All Types</option>
+                                <option value="R">Recycler (R)</option>
+                                <option value="S">Shop (S)</option>
+                                <option value="SR">Shop + Recycler (SR)</option>
+                                <option value="D">Delivery (D)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Vendor Search Results -->
+                    <div id="vendorSearchResults" class="mt-3" style="display: none;">
+                        <h6>Search Results:</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Mobile</th>
+                                        <th>Type</th>
+                                        <th>Shop Name</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vendorSearchResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Nearby Vendors -->
+                    <div class="row">
+                        <div class="col-md-8">
+                            <label class="form-label"><strong>Find Nearby Vendors (by order location):</strong></label>
+                        </div>
+                        <div class="col-md-4">
+                            <select id="nearbyRadius" class="form-control form-control-sm">
+                                <option value="5">Within 5 km</option>
+                                <option value="10">Within 10 km</option>
+                                <option value="20" selected>Within 20 km</option>
+                                <option value="50">Within 50 km</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-info btn-sm mt-2" onclick="getAvailableVendorsForOrder(${order.id})">
+                        <i class="fa fa-map-marker"></i> Find Nearby Vendors
+                    </button>
+                    
+                    <!-- Nearby Vendors Results -->
+                    <div id="nearbyVendorsResults" class="mt-3" style="display: none;">
+                        <h6>Available Vendors Nearby:</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Shop Name</th>
+                                        <th>Distance</th>
+                                        <th>Type</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="nearbyVendorsResultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="mt-4">
                 <div class="btn-group" role="group">
                     <button class="btn btn-primary" onclick="addNearbyNUsersToOrder(event, ${order.id})">
@@ -1370,6 +1505,281 @@ function addVendorToOrder(event, orderId, vendorId, vendorName) {
         button.innerHTML = originalText;
     });
 }
+
+// ==================== ORDER STATUS MANAGEMENT ====================
+
+function updateOrderStatus(orderId) {
+    const statusSelect = document.getElementById('orderStatusSelect');
+    const notesInput = document.getElementById('orderStatusNotes');
+    const newStatus = statusSelect.value;
+    const notes = notesInput ? notesInput.value : '';
+    
+    const statusLabels = {
+        1: 'Scheduled',
+        2: 'Accepted',
+        3: 'In Progress',
+        4: 'Picked Up',
+        5: 'Completed',
+        6: 'Accepted by Other',
+        7: 'Cancelled'
+    };
+    
+    if (!confirm(`Are you sure you want to update the order status to "${statusLabels[newStatus]}"?`)) {
+        return;
+    }
+    
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Updating...';
+    
+    fetch(`/api/admin/order/${orderId}/status`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+            status: parseInt(newStatus),
+            notes: notes
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Update status response:', data);
+        if (data.status === 'success') {
+            const oldStatus = data.data ? data.data.old_status_label : 'Unknown';
+            const newStatusLabel = data.data ? data.data.new_status_label : 'Unknown';
+            alert(`Order status updated successfully!\n\nFrom: ${oldStatus}\nTo: ${newStatusLabel}`);
+            
+            // Reload order details to show updated status
+            viewOrderDetails(orderId, 'customer_app');
+            
+            // Refresh the orders table
+            if (customerAppOrdersTable) {
+                customerAppOrdersTable.ajax.reload();
+            }
+        } else {
+            alert('Error: ' + (data.msg || 'Failed to update order status'));
+            button.disabled = false;
+            button.innerHTML = originalText;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to update order status: ' + error.message);
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
+}
+
+// ==================== VENDOR SEARCH & ASSIGNMENT ====================
+
+function searchVendors() {
+    const searchInput = document.getElementById('vendorSearchInput');
+    const typeFilter = document.getElementById('vendorTypeFilter');
+    const searchQuery = searchInput.value.trim();
+    const vendorType = typeFilter ? typeFilter.value : '';
+    
+    // Use the global currentOrderId
+    const orderId = currentOrderId;
+    
+    if (!orderId) {
+        alert('No order selected. Please view an order first.');
+        return;
+    }
+    
+    if (searchQuery.length < 2) {
+        alert('Please enter at least 2 characters to search');
+        return;
+    }
+    
+    const resultsDiv = document.getElementById('vendorSearchResults');
+    const resultsBody = document.getElementById('vendorSearchResultsBody');
+    
+    resultsBody.innerHTML = '<tr><td colspan="6" class="text-center"><i class="fa fa-spinner fa-spin"></i> Searching...</td></tr>';
+    resultsDiv.style.display = 'block';
+    
+    const params = new URLSearchParams({
+        q: searchQuery,
+        limit: 20
+    });
+    
+    if (vendorType) {
+        params.append('type', vendorType);
+    }
+    
+    fetch(`/api/admin/vendors/search?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Search vendors response:', data);
+        if (data.status === 'success' && data.data && data.data.length > 0) {
+            const vendors = data.data;
+            resultsBody.innerHTML = vendors.map(vendor => `
+                <tr>
+                    <td>${vendor.id}</td>
+                    <td>${vendor.name || 'N/A'}</td>
+                    <td>${vendor.mobile || 'N/A'}</td>
+                    <td><span class="badge badge-secondary">${vendor.user_type || 'N/A'}</span></td>
+                    <td>${vendor.shop_name || 'N/A'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="assignVendorToOrder(${orderId}, ${vendor.id}, '${vendor.user_type || 'shop'}', '${(vendor.name || '').replace(/'/g, "\\'")}')">
+                            <i class="fa fa-check"></i> Assign
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        } else {
+            resultsBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No vendors found matching your search</td></tr>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        resultsBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Error: ${error.message}</td></tr>`;
+    });
+}
+
+function getAvailableVendorsForOrder(orderId) {
+    const radiusSelect = document.getElementById('nearbyRadius');
+    const radius = radiusSelect ? radiusSelect.value : 20;
+    
+    const resultsDiv = document.getElementById('nearbyVendorsResults');
+    const resultsBody = document.getElementById('nearbyVendorsResultsBody');
+    
+    resultsBody.innerHTML = '<tr><td colspan="6" class="text-center"><i class="fa fa-spinner fa-spin"></i> Finding nearby vendors...</td></tr>';
+    resultsDiv.style.display = 'block';
+    
+    fetch(`/api/admin/order/${orderId}/available-vendors?radius=${radius}`, {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Available vendors response:', data);
+        if (data.status === 'success' && data.data) {
+            const withinRadius = data.data.vendors_within_radius || [];
+            
+            if (withinRadius.length > 0) {
+                resultsBody.innerHTML = withinRadius.map(vendor => `
+                    <tr class="${vendor.within_radius ? 'table-success' : ''}">
+                        <td>${vendor.id}</td>
+                        <td>${vendor.name || 'N/A'}</td>
+                        <td>${vendor.shop_name || 'N/A'}</td>
+                        <td><span class="badge badge-${vendor.distance_km <= 5 ? 'success' : vendor.distance_km <= 10 ? 'warning' : 'secondary'}">${vendor.distance_km} km</span></td>
+                        <td><span class="badge badge-info">${vendor.user_type || 'N/A'}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-success" onclick="assignVendorToOrder(${orderId}, ${vendor.id}, 'shop', '${(vendor.name || '').replace(/'/g, "\\'")}')">
+                                <i class="fa fa-check"></i> Assign
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                resultsBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No vendors found within the selected radius</td></tr>';
+            }
+        } else {
+            resultsBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">${data.msg || 'Failed to find nearby vendors'}</td></tr>`;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        resultsBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Error: ${error.message}</td></tr>`;
+    });
+}
+
+function assignVendorToOrder(orderId, vendorId, vendorType, vendorName) {
+    if (!confirm(`Are you sure you want to assign "${vendorName}" to this order?\n\nThis will:\n- Set the order status to "Accepted"\n- Assign the vendor to this order\n- Send a notification to the vendor`)) {
+        return;
+    }
+    
+    fetch(`/api/admin/order/${orderId}/assign-vendor`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+            vendor_id: vendorId,
+            vendor_type: vendorType,
+            notify_vendor: true
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Assign vendor response:', data);
+        if (data.status === 'success') {
+            const notificationSent = data.data ? data.data.notification_sent : false;
+            alert(`Vendor assigned successfully!\n\nVendor: ${vendorName}\nStatus: Accepted\nNotification Sent: ${notificationSent ? 'Yes' : 'No'}`);
+            
+            // Reload order details to show updated status and vendor
+            viewOrderDetails(orderId, 'customer_app');
+            
+            // Refresh the orders table
+            if (customerAppOrdersTable) {
+                customerAppOrdersTable.ajax.reload();
+            }
+        } else {
+            alert('Error: ' + (data.msg || 'Failed to assign vendor to order'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to assign vendor: ' + error.message);
+    });
+}
+
+// Store current order ID for use in vendor search
+let currentOrderId = null;
+
+// Update viewOrderDetails to store the order ID
+const originalViewOrderDetails = viewOrderDetails;
+viewOrderDetails = function(orderId, orderType) {
+    currentOrderId = orderId;
+    return originalViewOrderDetails(orderId, orderType);
+};
 </script>
 
 @endsection

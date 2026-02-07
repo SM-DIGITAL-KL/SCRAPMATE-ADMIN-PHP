@@ -215,8 +215,11 @@ class NodeApiService
 
     /**
      * Make a POST request to Node.js API
+     * @param string $endpoint API endpoint
+     * @param array $data Request body data
+     * @param int $timeout Timeout in seconds (default: 60)
      */
-    public function post($endpoint, $data = [])
+    public function post($endpoint, $data = [], $timeout = 60)
     {
         $fullUrl = $this->baseUrl . $endpoint;
         $method = 'POST';
@@ -225,9 +228,7 @@ class NodeApiService
             $headers = $this->getAuthHeaders();
             $headers['Content-Type'] = 'application/json';
             
-            // Reduced logging for performance
             // Increase timeout for large data syncs (like live prices with 400+ items)
-            $timeout = 300; // 5 minutes for large syncs
             if (isset($data['prices']) && is_array($data['prices']) && count($data['prices']) > 100) {
                 $timeout = 600; // 10 minutes for very large syncs
             }

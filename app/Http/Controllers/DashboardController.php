@@ -435,4 +435,183 @@ class DashboardController extends Controller
         }
         return 'secondary';
     }
+
+    /**
+     * Update order status (Admin)
+     */
+    public function updateOrderStatus(Request $request, $orderId)
+    {
+        try {
+            $status = $request->input('status');
+            $notes = $request->input('notes');
+            
+            if (!$status) {
+                return response()->json([
+                    'status' => 'error',
+                    'msg' => 'Status is required',
+                    'data' => null
+                ], 400);
+            }
+            
+            $apiResponse = $this->nodeApi->post('/admin/order/' . $orderId . '/status', [
+                'status' => $status,
+                'notes' => $notes
+            ], 60);
+            
+            if (isset($apiResponse['status']) && $apiResponse['status'] === 'success') {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Order status updated successfully',
+                    'data' => $apiResponse['data'] ?? null
+                ]);
+            }
+            
+            return response()->json([
+                'status' => 'error',
+                'msg' => $apiResponse['msg'] ?? 'Failed to update order status',
+                'data' => null
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Update order status API error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Error updating order status: ' . $e->getMessage(),
+                'data' => null
+            ], 500);
+        }
+    }
+
+    /**
+     * Assign vendor to order (Admin)
+     */
+    public function assignVendorToOrder(Request $request, $orderId)
+    {
+        try {
+            $vendorId = $request->input('vendor_id');
+            $vendorType = $request->input('vendor_type', 'shop');
+            $notifyVendor = $request->input('notify_vendor', true);
+            
+            if (!$vendorId) {
+                return response()->json([
+                    'status' => 'error',
+                    'msg' => 'Vendor ID is required',
+                    'data' => null
+                ], 400);
+            }
+            
+            $apiResponse = $this->nodeApi->post('/admin/order/' . $orderId . '/assign-vendor', [
+                'vendor_id' => $vendorId,
+                'vendor_type' => $vendorType,
+                'notify_vendor' => $notifyVendor
+            ], 60);
+            
+            if (isset($apiResponse['status']) && $apiResponse['status'] === 'success') {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Vendor assigned to order successfully',
+                    'data' => $apiResponse['data'] ?? null
+                ]);
+            }
+            
+            return response()->json([
+                'status' => 'error',
+                'msg' => $apiResponse['msg'] ?? 'Failed to assign vendor to order',
+                'data' => null
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Assign vendor to order API error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Error assigning vendor to order: ' . $e->getMessage(),
+                'data' => null
+            ], 500);
+        }
+    }
+
+    /**
+     * Search vendors for assignment
+     */
+    public function searchVendors(Request $request)
+    {
+        try {
+            $query = $request->input('q');
+            $type = $request->input('type');
+            $limit = $request->input('limit', 20);
+            
+            if (!$query || strlen($query) < 2) {
+                return response()->json([
+                    'status' => 'error',
+                    'msg' => 'Search query must be at least 2 characters',
+                    'data' => []
+                ], 400);
+            }
+            
+            $params = [
+                'q' => $query,
+                'limit' => $limit
+            ];
+            
+            if ($type) {
+                $params['type'] = $type;
+            }
+            
+            $apiResponse = $this->nodeApi->get('/admin/vendors/search', $params, 60);
+            
+            if (isset($apiResponse['status']) && $apiResponse['status'] === 'success') {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Vendors retrieved successfully',
+                    'data' => $apiResponse['data'] ?? []
+                ]);
+            }
+            
+            return response()->json([
+                'status' => 'error',
+                'msg' => $apiResponse['msg'] ?? 'Failed to search vendors',
+                'data' => []
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Search vendors API error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Error searching vendors: ' . $e->getMessage(),
+                'data' => []
+            ], 500);
+        }
+    }
+
+    /**
+     * Get available vendors for an order based on location
+     */
+    public function getAvailableVendorsForOrder(Request $request, $orderId)
+    {
+        try {
+            $radius = $request->input('radius', 20);
+            
+            $apiResponse = $this->nodeApi->get('/admin/order/' . $orderId . '/available-vendors', [
+                'radius' => $radius
+            ], 60);
+            
+            if (isset($apiResponse['status']) && $apiResponse['status'] === 'success') {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Available vendors retrieved successfully',
+                    'data' => $apiResponse['data'] ?? null
+                ]);
+            }
+            
+            return response()->json([
+                'status' => 'error',
+                'msg' => $apiResponse['msg'] ?? 'Failed to get available vendors',
+                'data' => null
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Get available vendors API error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Error getting available vendors: ' . $e->getMessage(),
+                'data' => null
+            ], 500);
+        }
+    }
 }
