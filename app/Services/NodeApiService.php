@@ -478,6 +478,93 @@ class NodeApiService
     }
 
     /**
+     * Make a POST request with multipart form data and multiple file fields
+     */
+    public function postMultipartWithFiles($endpoint, $data = [], $files = [], $timeout = 60)
+    {
+        $fullUrl = $this->baseUrl . $endpoint;
+
+        try {
+            $headers = $this->getAuthHeaders();
+            $request = Http::withHeaders($headers)->timeout($timeout);
+
+            $multipartData = [];
+
+            foreach ($data as $key => $value) {
+                $multipartData[] = [
+                    'name' => $key,
+                    'contents' => is_scalar($value) || $value === null ? (string) ($value ?? '') : json_encode($value),
+                ];
+            }
+
+            foreach ($files as $fieldName => $file) {
+                if (!$file) {
+                    continue;
+                }
+
+                $filePath = null;
+                $fileName = null;
+                $mimeType = null;
+
+                if ($file instanceof \Illuminate\Http\UploadedFile) {
+                    if (!$file->isValid()) {
+                        continue;
+                    }
+                    $filePath = $file->getRealPath();
+                    $fileName = $file->getClientOriginalName();
+                    $mimeType = $file->getMimeType();
+                } elseif (is_array($file)) {
+                    $filePath = $file['path'] ?? null;
+                    $fileName = $file['filename'] ?? basename((string) $filePath);
+                    $mimeType = $file['mime'] ?? null;
+                }
+
+                if (!$filePath || !file_exists($filePath)) {
+                    continue;
+                }
+
+                $part = [
+                    'name' => $fieldName,
+                    'contents' => file_get_contents($filePath),
+                    'filename' => $fileName ?: basename($filePath),
+                ];
+
+                if (!empty($mimeType)) {
+                    $part['headers'] = ['Content-Type' => $mimeType];
+                }
+
+                $multipartData[] = $part;
+            }
+
+            $response = $request->asMultipart()->post($fullUrl, $multipartData);
+            $responseData = $response->json();
+
+            if ($response->successful()) {
+                return is_array($responseData)
+                    ? $responseData
+                    : ['status' => 'error', 'msg' => 'Invalid response format from API', 'data' => null];
+            }
+
+            return [
+                'status' => 'error',
+                'msg' => $responseData['msg'] ?? 'API request failed',
+                'data' => null,
+            ];
+        } catch (\Exception $e) {
+            Log::error('❌ Node API POST Multipart (multi-file) Exception', [
+                'endpoint' => $endpoint,
+                'error_message' => $e->getMessage(),
+            ]);
+
+            return [
+                'status' => 'error',
+                'msg' => 'API connection failed: ' . $e->getMessage(),
+                'data' => null,
+            ];
+        }
+    }
+
+    /**
      * Make a PUT request to Node.js API
      */
     public function put($endpoint, $data = [])
@@ -829,4 +916,3 @@ class NodeApiService
         return $sanitized;
     }
 }
-

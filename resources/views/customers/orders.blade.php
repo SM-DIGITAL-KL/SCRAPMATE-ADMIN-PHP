@@ -8,7 +8,12 @@
                 <div class="card">
                     <div class="card-body">
                         @include('layouts.flashmessage')
-                        <h4 class="card-title">Orders List</h4>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="card-title mb-0">Orders List</h4>
+                            <a href="{{ route('orders.create') }}" class="btn btn-primary btn-sm">
+                                Create Order
+                            </a>
+                        </div>
                         <hr>
                         
                         <!-- Filter Buttons -->

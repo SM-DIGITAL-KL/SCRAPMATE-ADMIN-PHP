@@ -1,7 +1,6 @@
 <?php
 
 namespace App\Models;
-use Illuminate\Support\Facades\DB;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -49,22 +48,9 @@ class User extends Authenticatable
     }
     public static function permission($user_type,$pagename,$id)
     {
-        if ($user_type == 'A') {
-            return true;
-        } else {
-            $role = DB::table('user_admins')->where('user_id',$id)->first();
-            $page = DB::table('per_pages')->where('name', 'like', '%' . $pagename . '%')->first();
-            $pagePermissions = explode(',', $role->page_permission);
-            if (!empty($role->page_permission) || !empty($page)) {
-                if (in_array($page->id, $pagePermissions)) {
-                    return true;
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
+        // MySQL-backed permission tables are no longer used in this setup.
+        // Admin panel auth now comes from DynamoDB users where A/U are valid admin users.
+        return in_array((string) $user_type, ['A', 'U'], true);
     }
 
     public static function get_lat_log_data() {

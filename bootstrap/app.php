@@ -15,6 +15,12 @@ $app = Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Login AJAX on production occasionally hits 419 (CSRF/session mismatch).
+        // Exempt only dologin endpoint to keep web login reliable.
+        $middleware->validateCsrfTokens(except: [
+            'dologin',
+        ]);
+
         $middleware->alias([
             'authusers' => AuthenticateUser::class,
             'apicheck' => ApiTokenIsValid::class

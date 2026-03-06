@@ -1,5 +1,8 @@
 @extends('index')
 @section('content')
+@php
+    $is_zone_email = preg_match('/^zone/i', (string) session('user_email', '')) === 1;
+@endphp
 <!--**********************************
     Content body start
 ***********************************-->
@@ -159,8 +162,11 @@
                         <div class="row mt-4">
                             <div class="col-xl-12">
                                 <div class="card">
-                                    <div class="card-header border-0">
-                                        <h4 class="card-title">Recent Customer App Orders (v2)</h4>
+                                    <div class="card-header border-0 d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">Recent Customer App Orders (v2)</h4>
+                                        <a href="/api/dashboard/export-scheduled-orders" class="btn btn-success btn-sm">
+                                            <i class="fa fa-file-excel-o"></i> Download Scheduled Orders (Excel)
+                                        </a>
                                     </div>
                                     <div class="card-body">
                                         <div class="table-responsive">
@@ -188,6 +194,7 @@
                         </div>
 
                         <!-- Bulk Orders -->
+                        @if(!$is_zone_email)
                         <div class="row mt-4">
                             <div class="col-xl-12">
                                 <div class="card">
@@ -199,20 +206,21 @@
                                             <table class="table table-striped" id="bulkOrdersTable">
                                                 <thead>
                                                     <tr>
-                                                        <th>Order ID</th>
-                                                        <th>Order Number</th>
-                                                        <th>Bulk Request ID</th>
-                                                        <th>Customer ID</th>
-                                                        <th>Shop ID</th>
+                                                        <th>Request ID</th>
+                                                        <th>Buyer/Seller</th>
+                                                        <th>Type</th>
+                                                        <th>Scrap Type</th>
+                                                        <th>Quantity</th>
+                                                        <th>Price</th>
+                                                        <th>Location</th>
                                                         <th>Status</th>
-                                                        <th>Amount</th>
                                                         <th>Date</th>
                                                         <th>Actions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     <tr>
-                                                        <td colspan="8" class="text-center">Loading orders...</td>
+                                                        <td colspan="10" class="text-center">Loading bulk orders...</td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -221,6 +229,7 @@
                                 </div>
                             </div>
                         </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -256,6 +265,65 @@
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
 <script>
+const LOGGED_IN_EMAIL = @json(strtolower((string) session('user_email', '')));
+const IS_ZONE1_USER = LOGGED_IN_EMAIL === 'zone1@scrapmate.co.in';
+const ZONE1_DISTRICTS = [
+    'saharanpur',
+    'muzaffarnagar',
+    'shamli',
+    'baghpat',
+    'meerut',
+    'ghaziabad',
+    'hapur'
+];
+const ZONE1_ORDER_MATCH_CACHE = {};
+
+function isZone1DistrictText(value) {
+    if (!value) return false;
+    const text = String(value).toLowerCase();
+    return ZONE1_DISTRICTS.some(district => text.includes(district));
+}
+
+function extractCustomerAddress(order) {
+    if (!order) return '';
+    let address = '';
+    if (order.customerdetails) {
+        try {
+            const customerDetails = typeof order.customerdetails === 'string'
+                ? JSON.parse(order.customerdetails)
+                : order.customerdetails;
+            address = customerDetails.address || customerDetails.customerdetails || customerDetails.full_address || '';
+        } catch (e) {
+            if (typeof order.customerdetails === 'string') {
+                address = order.customerdetails;
+            }
+        }
+    }
+    if (!address && order.customer_address) {
+        address = order.customer_address;
+    }
+    return address || '';
+}
+
+async function isZone1Order(orderId) {
+    if (!orderId) return false;
+    if (ZONE1_ORDER_MATCH_CACHE[orderId] !== undefined) {
+        return ZONE1_ORDER_MATCH_CACHE[orderId];
+    }
+    try {
+        const response = await fetch(`/api/dashboard/order/${orderId}`);
+        const result = await response.json();
+        const addressText = result?.status === 'success' ? extractCustomerAddress(result.data) : '';
+        const isMatch = isZone1DistrictText(addressText);
+        ZONE1_ORDER_MATCH_CACHE[orderId] = isMatch;
+        return isMatch;
+    } catch (error) {
+        console.error('Zone1 order filter error:', orderId, error);
+        ZONE1_ORDER_MATCH_CACHE[orderId] = false;
+        return false;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize DataTable for customer app orders
     initializeCustomerAppOrdersTable();
@@ -268,17 +336,21 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadV2DashboardData() {
+    console.log('🔄 Loading V2 dashboard data...');
     fetch('/api/dashboard/v2-user-types')
         .then(response => response.json())
         .then(data => {
+            console.log('📊 Dashboard API response:', data);
             if (data.status === 'success' && data.data) {
+                console.log('✅ Dashboard data received, orders:', data.data.orders);
+                console.log('📋 Recent bulk orders:', data.data.orders?.recentBulkOrders);
                 updateDashboard(data.data);
             } else {
-                console.error('Error loading dashboard data:', data.msg);
+                console.error('❌ Error loading dashboard data:', data.msg);
             }
         })
         .catch(error => {
-            console.error('Error fetching dashboard data:', error);
+            console.error('❌ Error fetching dashboard data:', error);
         });
 }
 
@@ -395,7 +467,7 @@ function initializeCustomerAppOrdersTable() {
     if (customerAppOrdersTable) {
         customerAppOrdersTable.destroy();
     }
-    
+
     customerAppOrdersTable = $('#customerAppOrdersTable').DataTable({
         processing: true,
         serverSide: true,
@@ -498,30 +570,59 @@ function updateCustomerAppOrdersTable(orders) {
 }
 
 function updateBulkOrdersTable(orders) {
+    console.log('🔄 updateBulkOrdersTable called with:', orders);
     const tbody = document.querySelector('#bulkOrdersTable tbody');
+    if (!tbody) {
+        return;
+    }
+    if (IS_ZONE1_USER && Array.isArray(orders)) {
+        orders = orders.filter(order => isZone1DistrictText(order.location || ''));
+    }
     if (!orders || orders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No bulk orders found</td></tr>';
+        console.log('⚠️ No bulk orders to display');
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No bulk orders found</td></tr>';
         return;
     }
     
     tbody.innerHTML = orders.map(order => {
-        const orderDate = order.created_at || order.date ? new Date(order.created_at || order.date).toLocaleDateString() : 'N/A';
-        const amount = order.total_amount || order.estim_price || order.amount || '0.00';
-        const status = getStatusLabel(order.status);
+        const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString() : 'N/A';
         const orderId = order.id || 'N/A';
+        const buyerId = order.buyer_id || 'N/A';
+        const buyerName = order.buyer_name || `User ${buyerId}`;
+        const quantity = order.quantity ? `${order.quantity} kg` : 'N/A';
+        const scrapType = order.scrap_type || 'N/A';
+        const location = order.location || 'N/A';
+        const status = order.status || 'active';
+        const orderType = order.order_type || 'bulk_buy';
+        const orderTypeLabel = order.order_type_label || 'Bulk Buy';
+        
+        // Price field varies by table
+        let priceDisplay = 'N/A';
+        if (order.preferred_price) {
+            priceDisplay = `₹${order.preferred_price}/kg`;
+        } else if (order.asking_price) {
+            priceDisplay = `₹${order.asking_price}/kg`;
+        }
+        
+        // Type badge color
+        let typeBadgeColor = 'info';
+        if (orderType === 'bulk_sell') typeBadgeColor = 'success';
+        if (orderType === 'pending_buy') typeBadgeColor = 'warning';
+        
         return `
             <tr>
                 <td>${orderId}</td>
-                <td>${order.order_no || order.order_number || 'N/A'}</td>
-                <td>${order.bulk_request_id || 'N/A'}</td>
-                <td>${order.customer_id || 'N/A'}</td>
-                <td>${order.shop_id || 'N/A'}</td>
-                <td><span class="badge badge-${getStatusColor(order.status)}">${status}</span></td>
-                <td>₹${parseFloat(amount).toFixed(2)}</td>
+                <td>${buyerName}</td>
+                <td><span class="badge badge-${typeBadgeColor}">${orderTypeLabel}</span></td>
+                <td>${scrapType}</td>
+                <td>${quantity}</td>
+                <td>${priceDisplay}</td>
+                <td>${location.substring(0, 40)}${location.length > 40 ? '...' : ''}</td>
+                <td><span class="badge badge-${getStatusColor(status)}">${status}</span></td>
                 <td>${orderDate}</td>
                 <td>
-                    <button class="btn btn-sm btn-primary" onclick="viewOrderDetails(${orderId}, 'bulk')">
-                        <i class="fa fa-eye"></i> View Details
+                    <button class="btn btn-sm btn-primary" onclick="viewBulkOrderDetails('${orderId}')">
+                        <i class="fa fa-eye"></i> View
                     </button>
                 </td>
             </tr>
@@ -553,6 +654,118 @@ function getStatusColor(status) {
         return 'info';
     }
     return 'secondary';
+}
+
+function viewBulkOrderDetails(orderId) {
+    // Show modal for bulk scrap request details
+    $('#orderDetailsModal').modal('show');
+    
+    // Set loading state
+    document.getElementById('orderDetailsContent').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+            <p class="mt-2">Loading bulk order details...</p>
+        </div>
+    `;
+    
+    // Fetch bulk order details from API
+    fetch(`/api/dashboard/bulk-order/${orderId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success' && data.data) {
+                displayBulkOrderDetails(data.data);
+            } else {
+                showError(data.msg || 'Failed to load bulk order details');
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching bulk order details:', error);
+            showError('Failed to load bulk order details. Please try again.');
+        });
+}
+
+function displayBulkOrderDetails(order) {
+    const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString() : 'N/A';
+    const status = order.status || 'active';
+    const statusColor = getStatusColor(status);
+    const orderType = order.order_type || 'bulk_buy';
+    const orderTypeLabel = order.order_type_label || 'Bulk Buy';
+    
+    // Type badge color
+    let typeBadgeColor = 'info';
+    if (orderType === 'bulk_sell') typeBadgeColor = 'success';
+    if (orderType === 'pending_buy') typeBadgeColor = 'warning';
+    
+    // Parse subcategories
+    let subcategoriesHtml = 'N/A';
+    if (order.subcategories) {
+        try {
+            const subcats = typeof order.subcategories === 'string' ? JSON.parse(order.subcategories) : order.subcategories;
+            if (Array.isArray(subcats) && subcats.length > 0) {
+                subcategoriesHtml = '<ul class="list-unstyled mb-0">' + 
+                    subcats.map(s => `<li>${s.subcategory_name || s.name || s}</li>`).join('') + 
+                    '</ul>';
+            }
+        } catch (e) {
+            subcategoriesHtml = order.subcategories;
+        }
+    }
+    
+    // Price field varies by table
+    let priceDisplay = 'N/A';
+    if (order.preferred_price) {
+        priceDisplay = '₹' + order.preferred_price + '/kg';
+    } else if (order.asking_price) {
+        priceDisplay = '₹' + order.asking_price + '/kg';
+    }
+    
+    // User label based on order type
+    const userLabel = orderType === 'bulk_sell' ? 'Seller' : 'Buyer';
+    
+    document.getElementById('orderDetailsContent').innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Request Information</h6>
+                <table class="table table-sm">
+                    <tr><td><strong>Request ID:</strong></td><td>${order.id}</td></tr>
+                    <tr><td><strong>Type:</strong></td><td><span class="badge badge-${typeBadgeColor}">${orderTypeLabel}</span></td></tr>
+                    <tr><td><strong>Status:</strong></td><td><span class="badge badge-${statusColor}">${status}</span></td></tr>
+                    <tr><td><strong>Created:</strong></td><td>${orderDate}</td></tr>
+                    <tr><td><strong>Scrap Type:</strong></td><td>${order.scrap_type || 'N/A'}</td></tr>
+                    <tr><td><strong>Quantity:</strong></td><td>${order.quantity ? order.quantity + ' kg' : 'N/A'}</td></tr>
+                    <tr><td><strong>Price:</strong></td><td>${priceDisplay}</td></tr>
+                    <tr><td><strong>Preferred Distance:</strong></td><td>${order.preferred_distance ? order.preferred_distance + ' km' : 'N/A'}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6>${userLabel} Information</h6>
+                <table class="table table-sm">
+                    <tr><td><strong>${userLabel} ID:</strong></td><td>${order.buyer_id || 'N/A'}</td></tr>
+                    <tr><td><strong>${userLabel} Name:</strong></td><td>${order.buyer_name || 'N/A'}</td></tr>
+                    ${order.payment_status ? `<tr><td><strong>Payment Status:</strong></td><td><span class="badge badge-${order.payment_status === 'paid' ? 'success' : 'warning'}">${order.payment_status}</span></td></tr>` : ''}
+                    ${order.transaction_id ? `<tr><td><strong>Transaction ID:</strong></td><td>${order.transaction_id}</td></tr>` : ''}
+                </table>
+                <h6 class="mt-3">Location</h6>
+                <p>${order.location || 'N/A'}</p>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <h6>Subcategories</h6>
+                ${subcategoriesHtml}
+            </div>
+        </div>
+        ${order.additional_notes ? `
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <h6>Additional Notes</h6>
+                <p>${order.additional_notes}</p>
+            </div>
+        </div>
+        ` : ''}
+    `;
 }
 
 function viewOrderDetails(orderId, orderType) {
@@ -1123,6 +1336,14 @@ function displayOrderDetails(order, orderType) {
                         <label class="form-label"><strong>Admin Notes (optional):</strong></label>
                         <textarea id="orderStatusNotes" class="form-control" rows="2" placeholder="Add notes about this status change..."></textarea>
                     </div>
+                    ${parseInt(order.status) === 1 ? `
+                    <div class="mt-3">
+                        <button class="btn btn-warning" onclick="rescheduleScheduledOrder(event, ${order.id})">
+                            <i class="fa fa-calendar"></i> Reschedule & Re-Notify Vendors
+                        </button>
+                        <small class="text-muted d-block mt-2">For scheduled orders, this will send notifications again to all previously notified vendors.</small>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
             
@@ -1582,6 +1803,73 @@ function updateOrderStatus(orderId) {
     });
 }
 
+function rescheduleScheduledOrder(event, orderId) {
+    const notesInput = document.getElementById('orderStatusNotes');
+    const notes = notesInput ? notesInput.value : '';
+
+    if (!confirm('Are you sure you want to reschedule this scheduled order and notify all previously notified vendors again?')) {
+        return;
+    }
+
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Rescheduling...';
+
+    fetch(`/api/admin/order/${orderId}/reschedule-scheduled`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+            notes: notes
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text.substring(0, 150)}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Reschedule response:', data);
+        if (data.status === 'success') {
+            const notifications = data.data?.notifications || {};
+            const pushSent = notifications.pushSent || 0;
+            const smsSent = notifications.smsSent || 0;
+            const totalVendors = notifications.totalVendors || 0;
+
+            alert(
+                `Order rescheduled successfully.\n\n` +
+                `Notified vendors: ${totalVendors}\n` +
+                `Push sent: ${pushSent}\n` +
+                `SMS sent: ${smsSent}`
+            );
+
+            viewOrderDetails(orderId, 'customer_app');
+            if (customerAppOrdersTable) {
+                customerAppOrdersTable.ajax.reload();
+            }
+            return;
+        }
+
+        alert('Error: ' + (data.msg || 'Failed to reschedule order'));
+        button.disabled = false;
+        button.innerHTML = originalText;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to reschedule order: ' + error.message);
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
+}
+
 // ==================== VENDOR SEARCH & ASSIGNMENT ====================
 
 function searchVendors() {
@@ -1783,4 +2071,3 @@ viewOrderDetails = function(orderId, orderType) {
 </script>
 
 @endsection
-

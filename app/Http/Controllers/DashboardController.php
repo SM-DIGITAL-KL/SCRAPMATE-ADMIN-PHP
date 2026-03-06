@@ -251,6 +251,34 @@ class DashboardController extends Controller
         }
     }
 
+    public function bulkOrderDetails($id)
+    {
+        try {
+            $apiResponse = $this->nodeApi->get('/admin/dashboard/bulk-order/' . $id, [], 60);
+            
+            if (isset($apiResponse['status']) && $apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => 'Bulk order details retrieved',
+                    'data' => $apiResponse['data']
+                ]);
+            }
+            
+            return response()->json([
+                'status' => 'error',
+                'msg' => $apiResponse['msg'] ?? 'Failed to load bulk order details',
+                'data' => null
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Bulk order details API error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Error loading bulk order details',
+                'data' => null
+            ], 500);
+        }
+    }
+
     public function getCustomerAppOrdersPaginated(Request $request)
     {
         try {
@@ -269,6 +297,15 @@ class DashboardController extends Controller
                 'page' => $page,
                 'limit' => $limit
             ];
+
+            // Zone-specific restriction: zone1..zone48 logins should see only their zone.
+            $loggedInEmail = strtolower((string) session('user_email', ''));
+            if (preg_match('/^zone(\d{1,2})@scrapmate\.co\.in$/', $loggedInEmail, $matches)) {
+                $zoneNumber = intval($matches[1]);
+                if ($zoneNumber >= 1 && $zoneNumber <= 48) {
+                    $params['zone'] = 'Z' . str_pad((string) $zoneNumber, 2, '0', STR_PAD_LEFT);
+                }
+            }
             
             if ($searchValue) {
                 $params['search'] = $searchValue;
@@ -354,6 +391,7 @@ class DashboardController extends Controller
                         $formattedData[] = [
                             'DT_RowIndex' => $start + $index + 1,
                             'id' => $orderId,
+                            'zone' => $orderObj->customer_zone ?? 'N/A',
                             'order_number' => $orderObj->order_no ?? $orderObj->order_number ?? 'N/A',
                             'customer_id' => $orderObj->customer_id ?? 'N/A',
                             'shop_id' => $orderObj->shop_id ?? 'N/A',
@@ -404,6 +442,197 @@ class DashboardController extends Controller
                 'recordsFiltered' => 0,
                 'data' => [],
                 'error' => 'Error loading customer app orders'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Export scheduled customer app orders with user and notified vendor info to Excel
+     */
+    public function exportScheduledOrdersWithVendors(Request $request)
+    {
+        try {
+            // Fetch all scheduled orders (status = 1) - no pagination for export
+            $params = [
+                'page' => 1,
+                'limit' => 1000,
+                'status' => 1  // Filter for scheduled orders only
+            ];
+            
+            $apiResponse = $this->nodeApi->get('/admin/dashboard/customer-app-orders', $params, 120);
+            
+            if (!isset($apiResponse['status']) || $apiResponse['status'] !== 'success') {
+                return response()->json([
+                    'status' => 'error',
+                    'msg' => $apiResponse['msg'] ?? 'Failed to fetch orders'
+                ], 500);
+            }
+            
+            $orders = $apiResponse['data'] ?? [];
+            
+            // Create new spreadsheet
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            
+            // Set headers
+            $headers = [
+                'Order ID',
+                'Order Number',
+                'Order Date',
+                'Status',
+                'Customer ID',
+                'Customer Name',
+                'Customer Address',
+                'Customer Phone',
+                'Estimated Weight (kg)',
+                'Estimated Price (₹)',
+                'Notified Vendor ID',
+                'Notified Vendor Name',
+                'Notified Vendor Mobile',
+                'Notified Vendor Shop Name',
+                'Notified Vendor Distance (km)',
+                'Notified Vendor User Type',
+                'Notified Vendor App Version'
+            ];
+            
+            // Write headers
+            $col = 'A';
+            foreach ($headers as $header) {
+                $sheet->setCellValue($col . '1', $header);
+                $col++;
+            }
+            
+            // Style headers
+            $headerStyle = [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '4CAF50']],
+                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
+            ];
+            $sheet->getStyle('A1:Q1')->applyFromArray($headerStyle);
+            
+            // Write data
+            $row = 2;
+            foreach ($orders as $order) {
+                $orderObj = is_array($order) ? (object)$order : $order;
+                
+                // Only include scheduled orders
+                if (($orderObj->status ?? 0) != 1) {
+                    continue;
+                }
+                
+                // Fetch full order details to get notified_vendors and enriched customer data
+                $orderDetails = null;
+                $notifiedVendors = [];
+                $customerName = 'N/A';
+                $customerAddress = 'N/A';
+                $customerPhone = 'N/A';
+                
+                try {
+                    $orderDetailResponse = $this->nodeApi->get('/admin/dashboard/order/' . $orderObj->id . '/notified-vendors', [], 30);
+                    if (isset($orderDetailResponse['status']) && $orderDetailResponse['status'] === 'success') {
+                        $orderDetails = $orderDetailResponse['data'] ?? null;
+                        if ($orderDetails) {
+                            // Get notified vendors
+                            if (isset($orderDetails['notified_vendors'])) {
+                                $notifiedVendors = $orderDetails['notified_vendors'];
+                            }
+                            // Get enriched customer details from order details endpoint
+                            $customerName = $orderDetails['customer_name'] ?? 'N/A';
+                            $customerAddress = $orderDetails['customer_address'] ?? 'N/A';
+                            $customerPhone = $orderDetails['customer_phone'] ?? 'N/A';
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Could not fetch order details for export', ['order_id' => $orderObj->id, 'error' => $e->getMessage()]);
+                }
+                
+                // Fallback: Parse customer details from order list if not enriched by order details endpoint
+                if ($customerName === 'N/A' && $customerAddress === 'N/A' && $customerPhone === 'N/A' && isset($orderObj->customerdetails)) {
+                    try {
+                        $customerDetails = is_string($orderObj->customerdetails) 
+                            ? json_decode($orderObj->customerdetails, true) 
+                            : $orderObj->customerdetails;
+                        $customerName = $customerDetails['name'] ?? $customerDetails['customer_name'] ?? $customerDetails['full_name'] ?? 'N/A';
+                        $customerAddress = $customerDetails['address'] ?? $customerDetails['customerdetails'] ?? $customerDetails['full_address'] ?? 'N/A';
+                        $customerPhone = $customerDetails['phone'] ?? $customerDetails['mobile'] ?? $customerDetails['contact'] ?? $customerDetails['mob_num'] ?? $customerDetails['phone_number'] ?? 'N/A';
+                    } catch (\Exception $e) {
+                        if (is_string($orderObj->customerdetails)) {
+                            $customerAddress = $orderObj->customerdetails;
+                        }
+                    }
+                }
+                
+                // If no notified vendors from order details, create basic entries from IDs
+                if (empty($notifiedVendors) && !empty($notifiedVendorIds)) {
+                    foreach ($notifiedVendorIds as $vendorId) {
+                        $notifiedVendors[] = ['id' => $vendorId];
+                    }
+                }
+                
+                // If no notified vendors, write order info with empty vendor columns
+                if (empty($notifiedVendors)) {
+                    $sheet->setCellValue('A' . $row, $orderObj->id ?? 'N/A');
+                    $sheet->setCellValue('B' . $row, $orderObj->order_no ?? $orderObj->order_number ?? 'N/A');
+                    $sheet->setCellValue('C' . $row, isset($orderObj->created_at) ? date('Y-m-d', strtotime($orderObj->created_at)) : 'N/A');
+                    $sheet->setCellValue('D' . $row, 'Scheduled');
+                    $sheet->setCellValue('E' . $row, $orderObj->customer_id ?? 'N/A');
+                    $sheet->setCellValue('F' . $row, $customerName);
+                    $sheet->setCellValue('G' . $row, $customerAddress);
+                    $sheet->setCellValue('H' . $row, $customerPhone);
+                    $sheet->setCellValue('I' . $row, $orderObj->estim_weight ?? $orderObj->estimated_weight ?? 0);
+                    $sheet->setCellValue('J' . $row, $orderObj->estim_price ?? $orderObj->estimated_price ?? 0);
+                    $sheet->setCellValue('K' . $row, 'No vendors notified');
+                    $row++;
+                } else {
+                    // Write a row for each notified vendor
+                    foreach ($notifiedVendors as $vendor) {
+                        $vendorObj = is_array($vendor) ? (object)$vendor : $vendor;
+                        
+                        $sheet->setCellValue('A' . $row, $orderObj->id ?? 'N/A');
+                        $sheet->setCellValue('B' . $row, $orderObj->order_no ?? $orderObj->order_number ?? 'N/A');
+                        $sheet->setCellValue('C' . $row, isset($orderObj->created_at) ? date('Y-m-d', strtotime($orderObj->created_at)) : 'N/A');
+                        $sheet->setCellValue('D' . $row, 'Scheduled');
+                        $sheet->setCellValue('E' . $row, $orderObj->customer_id ?? 'N/A');
+                        $sheet->setCellValue('F' . $row, $customerName);
+                        $sheet->setCellValue('G' . $row, $customerAddress);
+                        $sheet->setCellValue('H' . $row, $customerPhone);
+                        $sheet->setCellValue('I' . $row, $orderObj->estim_weight ?? $orderObj->estimated_weight ?? 0);
+                        $sheet->setCellValue('J' . $row, $orderObj->estim_price ?? $orderObj->estimated_price ?? 0);
+                        $sheet->setCellValue('K' . $row, $vendorObj->id ?? 'N/A');
+                        $sheet->setCellValue('L' . $row, $vendorObj->name ?? 'N/A');
+                        $sheet->setCellValue('M' . $row, $vendorObj->mobile ?? $vendorObj->mob_num ?? 'N/A');
+                        $sheet->setCellValue('N' . $row, $vendorObj->shop_name ?? 'N/A');
+                        $sheet->setCellValue('O' . $row, $vendorObj->distance_km ?? 'N/A');
+                        $sheet->setCellValue('P' . $row, $vendorObj->user_type ?? 'N/A');
+                        $sheet->setCellValue('Q' . $row, $vendorObj->app_version ?? 'N/A');
+                        $row++;
+                    }
+                }
+            }
+            
+            // Auto-size columns
+            foreach (range('A', 'Q') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+            
+            // Create writer and output
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            
+            $filename = 'scheduled_orders_with_vendors_' . date('Y-m-d_H-i-s') . '.xlsx';
+            
+            // Set headers for download
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment;filename="' . $filename . '"');
+            header('Cache-Control: max-age=0');
+            
+            $writer->save('php://output');
+            exit;
+            
+        } catch (\Exception $e) {
+            Log::error('Export scheduled orders error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Error exporting orders: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -476,6 +705,41 @@ class DashboardController extends Controller
             return response()->json([
                 'status' => 'error',
                 'msg' => 'Error updating order status: ' . $e->getMessage(),
+                'data' => null
+            ], 500);
+        }
+    }
+
+    /**
+     * Reschedule a scheduled order and re-notify previously notified vendors (Admin)
+     */
+    public function rescheduleScheduledOrder(Request $request, $orderId)
+    {
+        try {
+            $notes = $request->input('notes');
+
+            $apiResponse = $this->nodeApi->post('/admin/order/' . $orderId . '/reschedule-scheduled', [
+                'notes' => $notes
+            ], 90);
+
+            if (isset($apiResponse['status']) && $apiResponse['status'] === 'success') {
+                return response()->json([
+                    'status' => 'success',
+                    'msg' => $apiResponse['msg'] ?? 'Order rescheduled successfully',
+                    'data' => $apiResponse['data'] ?? null
+                ]);
+            }
+
+            return response()->json([
+                'status' => 'error',
+                'msg' => $apiResponse['msg'] ?? 'Failed to reschedule order',
+                'data' => $apiResponse['data'] ?? null
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Reschedule scheduled order API error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'msg' => 'Error rescheduling order: ' . $e->getMessage(),
                 'data' => null
             ], 500);
         }

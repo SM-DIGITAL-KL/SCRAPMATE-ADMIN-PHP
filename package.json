@@ -3,7 +3,11 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "vite build"
+        "build": "vite build",
+        "tenders:scrape": "node scripts/scrape-tenders-puppeteer.cjs"
+    },
+    "dependencies": {
+        "puppeteer": "^24.2.0"
     },
     "devDependencies": {
         "axios": "^1.6.4",

@@ -53,7 +53,7 @@
                                                style="width: 200px;" 
                                                id="searchInput" 
                                                value="{{ request('search', '') }}"
-                                               placeholder="Search by phone or name...">
+                                               placeholder="Search by name, phone, email...">
                                         <button type="button" class="btn btn-sm btn-primary ms-2" id="searchButton">Search</button>
                                         <button type="button" class="btn btn-sm btn-secondary ms-2" id="clearButton" style="display: {{ request('search') ? 'inline-block' : 'none' }};">Clear</button>
                                     </div>
@@ -354,6 +354,8 @@ function updateFilterButtons(version) {
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
+    let searchDebounceTimer;
+
     // Search button
     document.getElementById('searchButton').addEventListener('click', performSearch);
     
@@ -366,6 +368,14 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             performSearch();
         }
+    });
+
+    // Live search while typing (debounced)
+    document.getElementById('searchInput').addEventListener('input', function() {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(function() {
+            performSearch();
+        }, 500);
     });
     
     // Entries per page dropdown

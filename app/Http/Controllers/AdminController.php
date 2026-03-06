@@ -1521,6 +1521,27 @@ class AdminController extends Controller
      */
     public function subscriptionPackages(Request $request)
     {
+        return $this->renderSubscriptionPackagesPage();
+    }
+
+    /**
+     * Display marketplace subscription packages page (userType = M)
+     */
+    public function marketplaceSubscriptionPackages(Request $request)
+    {
+        return $this->renderSubscriptionPackagesPage('M');
+    }
+
+    /**
+     * Shared renderer for subscription package pages.
+     */
+    private function renderSubscriptionPackagesPage(?string $forcedUserType = null)
+    {
+        $isMarketplaceContext = strtoupper((string) $forcedUserType) === 'M';
+        $routeName = $isMarketplaceContext ? 'marketplaceSubscriptionPackages' : 'subscriptionPackages';
+        $basePath = $isMarketplaceContext ? '/marketplaceSubscriptionPackages' : '/subscriptionPackages';
+        $pageName = $isMarketplaceContext ? 'Market Place Accounts - Manage Packages' : 'Subscription Packages';
+
         try {
             // Clear cache for this request to ensure fresh data
             $this->nodeApi->clearCache('/subscription-packages');
@@ -1543,11 +1564,20 @@ class AdminController extends Controller
                 if (!is_array($packages)) {
                     $packages = [];
                 }
+
+                if ($isMarketplaceContext) {
+                    $packages = array_values(array_filter($packages, function ($package) {
+                        return strtoupper((string) ($package['userType'] ?? '')) === 'M';
+                    }));
+                }
                 
                 // Display packages from DynamoDB
                 return view('admin.subscriptionPackages', [
-                    'pagename' => 'Subscription Packages',
+                    'pagename' => $pageName,
                     'packages' => $packages,
+                    'routeName' => $routeName,
+                    'packagesBasePath' => $basePath,
+                    'forceUserType' => $forcedUserType,
                 ]);
             }
             
@@ -1557,18 +1587,24 @@ class AdminController extends Controller
             ]);
             
             return view('admin.subscriptionPackages', [
-                'pagename' => 'Subscription Packages',
+                'pagename' => $pageName,
                 'packages' => [],
                 'error' => isset($apiResponse['message']) ? $apiResponse['message'] : 'No packages found. Please run the seed script to create default packages.',
+                'routeName' => $routeName,
+                'packagesBasePath' => $basePath,
+                'forceUserType' => $forcedUserType,
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching subscription packages: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString()
             ]);
             return view('admin.subscriptionPackages', [
-                'pagename' => 'Subscription Packages',
+                'pagename' => $pageName,
                 'packages' => [],
                 'error' => 'Failed to load subscription packages: ' . $e->getMessage(),
+                'routeName' => $routeName,
+                'packagesBasePath' => $basePath,
+                'forceUserType' => $forcedUserType,
             ]);
         }
     }
@@ -1578,19 +1614,49 @@ class AdminController extends Controller
      */
     public function updateSubscriptionPackage(Request $request, $id)
     {
+        return $this->handleSubscriptionPackageUpdate($request, $id);
+    }
+
+    /**
+     * Update marketplace subscription package (forced userType = M)
+     */
+    public function updateMarketplaceSubscriptionPackage(Request $request, $id)
+    {
+        return $this->handleSubscriptionPackageUpdate($request, $id, 'M');
+    }
+
+    /**
+     * Shared create/update/delete handler for subscription packages.
+     */
+    private function handleSubscriptionPackageUpdate(Request $request, $id, ?string $forcedUserType = null)
+    {
+        $isMarketplaceContext = strtoupper((string) $forcedUserType) === 'M';
+        $redirectRoute = $isMarketplaceContext ? 'marketplaceSubscriptionPackages' : 'subscriptionPackages';
+        $subjectLabel = $isMarketplaceContext ? 'Marketplace subscription package' : 'Subscription package';
+
         try {
+            if ($isMarketplaceContext && !($id === 'new' || empty($id))) {
+                $existingResponse = $this->nodeApi->get("/subscription-packages/{$id}");
+                $existingPackage = $existingResponse['data'] ?? null;
+                $existingType = strtoupper((string) ($existingPackage['userType'] ?? ''));
+                if ($existingResponse['status'] !== 'success' || $existingType !== 'M') {
+                    return redirect()->route($redirectRoute)
+                        ->with('error', 'Only marketplace (M) packages can be managed here');
+                }
+            }
+
             // Handle DELETE request
             if ($request->isMethod('delete') || $request->has('_method') && strtoupper($request->input('_method')) === 'DELETE') {
                 $apiResponse = $this->nodeApi->delete("/subscription-packages/{$id}");
                 
                 if ($apiResponse['status'] === 'success') {
                     $this->nodeApi->clearCache('/subscription-packages');
-                    return redirect()->route('subscriptionPackages')
-                        ->with('success', 'Subscription package deleted successfully');
+                    return redirect()->route($redirectRoute)
+                        ->with('success', $subjectLabel . ' deleted successfully');
                 }
                 
-                return redirect()->route('subscriptionPackages')
-                    ->with('error', $apiResponse['message'] ?? 'Failed to delete subscription package');
+                return redirect()->route($redirectRoute)
+                    ->with('error', $apiResponse['message'] ?? ('Failed to delete ' . strtolower($subjectLabel)));
             }
             
             $data = $request->only([
@@ -1608,6 +1674,10 @@ class AdminController extends Controller
                 'pricePercentage',
                 'isPercentageBased',
             ]);
+
+            if ($isMarketplaceContext) {
+                $data['userType'] = 'M';
+            }
             
             // Convert features string to array if needed
             if (isset($data['features']) && is_string($data['features'])) {
@@ -1645,7 +1715,7 @@ class AdminController extends Controller
             if ($id === 'new' || empty($id)) {
                 // Ensure id is provided
                 if (empty($data['id'])) {
-                    return redirect()->route('subscriptionPackages')
+                    return redirect()->route($redirectRoute)
                         ->with('error', 'Package ID is required');
                 }
                 
@@ -1653,12 +1723,12 @@ class AdminController extends Controller
                 
                 if ($apiResponse['status'] === 'success') {
                     $this->nodeApi->clearCache('/subscription-packages');
-                    return redirect()->route('subscriptionPackages')
-                        ->with('success', 'Subscription package created successfully');
+                    return redirect()->route($redirectRoute)
+                        ->with('success', $subjectLabel . ' created successfully');
                 }
                 
-                return redirect()->route('subscriptionPackages')
-                    ->with('error', $apiResponse['message'] ?? 'Failed to create subscription package');
+                return redirect()->route($redirectRoute)
+                    ->with('error', $apiResponse['message'] ?? ('Failed to create ' . strtolower($subjectLabel)));
             }
             
             // Handle UPDATE (existing package)
@@ -1668,15 +1738,15 @@ class AdminController extends Controller
                 // Clear PHP-side cache for subscription packages
                 $this->nodeApi->clearCache('/subscription-packages');
                 
-                return redirect()->route('subscriptionPackages')
-                    ->with('success', 'Subscription package updated successfully');
+                return redirect()->route($redirectRoute)
+                    ->with('success', $subjectLabel . ' updated successfully');
             }
             
-            return redirect()->route('subscriptionPackages')
-                ->with('error', $apiResponse['message'] ?? 'Failed to update subscription package');
+            return redirect()->route($redirectRoute)
+                ->with('error', $apiResponse['message'] ?? ('Failed to update ' . strtolower($subjectLabel)));
         } catch (\Exception $e) {
             Log::error('Error managing subscription package: ' . $e->getMessage());
-            return redirect()->route('subscriptionPackages')
+            return redirect()->route($redirectRoute)
                 ->with('error', 'Failed to manage subscription package: ' . $e->getMessage());
         }
     }

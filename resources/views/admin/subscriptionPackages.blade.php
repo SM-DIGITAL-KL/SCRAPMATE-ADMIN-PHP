@@ -1,5 +1,14 @@
 @extends('index')
 @section('content')
+@php
+    $isMarketplaceContext = strtoupper((string) ($forceUserType ?? '')) === 'M';
+    $packagesBasePath = $packagesBasePath ?? '/subscriptionPackages';
+    $pageTitle = $isMarketplaceContext ? 'Marketplace Subscription Packages List' : 'Subscription Packages List';
+    $pageSubtitle = $isMarketplaceContext
+        ? 'Manage marketplace subscription packages and pricing (user type M)'
+        : 'Manage your subscription packages and pricing';
+    $defaultUserType = $isMarketplaceContext ? 'M' : 'b2b';
+@endphp
 
 <div class="content-body">
     <div class="container-fluid">
@@ -12,8 +21,8 @@
                         <!-- Header Section -->
                         <div class="d-flex justify-content-between align-items-center mb-4">
                             <div>
-                                <h4 class="card-title mb-1">Subscription Packages List</h4>
-                                <p class="text-muted mb-0">Manage your subscription packages and pricing</p>
+                                <h4 class="card-title mb-1">{{ $pageTitle }}</h4>
+                                <p class="text-muted mb-0">{{ $pageSubtitle }}</p>
                             </div>
                             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPackageModal">
                                 <i class="fa fa-plus"></i> Add New Package
@@ -51,7 +60,7 @@
                                                 </div>
                                                 <div>
                                                     <h5 class="card-title mb-0">{{ $package['name'] ?? 'N/A' }}</h5>
-                                                    <small class="text-muted">{{ isset($package['userType']) ? strtoupper($package['userType']) : 'Package' }}</small>
+                                                    <small class="text-muted">{{ $isMarketplaceContext ? 'M' : (isset($package['userType']) ? strtoupper($package['userType']) : 'Package') }}</small>
                                                 </div>
                                             </div>
                                             <div class="form-check form-switch">
@@ -197,10 +206,15 @@
                     
                     <div class="mb-3">
                         <label class="form-label">User Type <span class="text-danger">*</span></label>
-                        <select class="form-select" name="userType" id="edit_userType" required>
-                            <option value="b2b">B2B</option>
-                            <option value="b2c">B2C</option>
-                        </select>
+                        @if($isMarketplaceContext)
+                            <input type="hidden" name="userType" id="edit_userType" value="M">
+                            <input type="text" class="form-control" value="M" disabled>
+                        @else
+                            <select class="form-select" name="userType" id="edit_userType" required>
+                                <option value="b2b">B2B</option>
+                                <option value="b2c">B2C</option>
+                            </select>
+                        @endif
                     </div>
                     
                     <div class="mb-3">
@@ -261,7 +275,7 @@
                 <h5 class="modal-title" id="addPackageModalLabel">Add New Subscription Package</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="addPackageForm" method="POST" action="{{ url('/subscriptionPackages/new') }}">
+            <form id="addPackageForm" method="POST" action="{{ url($packagesBasePath . '/new') }}">
                 @csrf
                 <div class="modal-body">
                     <div class="mb-3">
@@ -307,10 +321,15 @@
                     
                     <div class="mb-3">
                         <label class="form-label">User Type <span class="text-danger">*</span></label>
-                        <select class="form-select" name="userType" required>
-                            <option value="b2b">B2B</option>
-                            <option value="b2c">B2C</option>
-                        </select>
+                        @if($isMarketplaceContext)
+                            <input type="hidden" name="userType" id="add_userType" value="M">
+                            <input type="text" class="form-control" value="M" disabled>
+                        @else
+                            <select class="form-select" name="userType" id="add_userType" required>
+                                <option value="b2b">B2B</option>
+                                <option value="b2c">B2C</option>
+                            </select>
+                        @endif
                     </div>
                     
                     <div class="mb-3">
@@ -425,6 +444,7 @@
 <script>
 // Package data from server
 const packagesData = @json($packages ?? []);
+const defaultUserType = @json($defaultUserType);
 
 function editPackage(packageId) {
     const package = packagesData.find(p => p.id === packageId);
@@ -438,7 +458,7 @@ function editPackage(packageId) {
     document.getElementById('edit_name').value = package.name || '';
     document.getElementById('edit_price').value = package.price || 0;
     document.getElementById('edit_duration').value = package.duration || 'month';
-    document.getElementById('edit_userType').value = package.userType || 'b2b';
+    document.getElementById('edit_userType').value = package.userType || defaultUserType;
     document.getElementById('edit_description').value = package.description || '';
     document.getElementById('edit_features').value = Array.isArray(package.features) ? package.features.join('\n') : (package.features || '');
     document.getElementById('edit_upiId').value = package.upiId || '';
@@ -456,7 +476,7 @@ function editPackage(packageId) {
     togglePercentageFields('edit');
     
     // Set form action
-    document.getElementById('editPackageForm').action = '{{ url("/subscriptionPackages") }}/' + packageId;
+    document.getElementById('editPackageForm').action = '{{ url($packagesBasePath) }}/' + packageId;
     
     // Show modal
     const modal = new bootstrap.Modal(document.getElementById('editPackageModal'));
@@ -496,7 +516,7 @@ function deletePackage(packageId, packageName) {
     // Create a form and submit DELETE request
     const form = document.createElement('form');
     form.method = 'POST';
-    form.action = '{{ url("/subscriptionPackages") }}/' + packageId;
+    form.action = '{{ url($packagesBasePath) }}/' + packageId;
     
     const csrfToken = document.createElement('input');
     csrfToken.type = 'hidden';

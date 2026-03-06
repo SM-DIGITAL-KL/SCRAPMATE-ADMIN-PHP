@@ -1094,8 +1094,8 @@
                                                 <img src="{{ asset('assets/images/no-img-avatar.png') }}" class="ms-0" alt="">
                                             </li>
                                             <li class="ms-2">
-                                                <h4 class="mb-0">Admin</h4>
-                                                <span>Admin</span>
+                                                <h4 class="mb-0">{{ session('user_name', 'Admin') }}</h4>
+                                                <span>{{ session('user_email', session('user_type', 'Admin')) }}</span>
                                             </li>
                                         </ul>
 

@@ -9,6 +9,7 @@ use App\Http\Controllers\AgentController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\AccountsController;
 use App\Http\Controllers\LivePricesController;
+use App\Http\Controllers\TenderController;
 
 // PHP Upload Limits Check Route (for debugging)
 Route::get('/check-php-limits', function() {
@@ -104,6 +105,9 @@ Route::middleware(['authusers'])->group(function () {
     Route::get('/show_recent_orders/{id?}', [CustomerController::class, 'show_recent_orders'])->name('show_recent_orders');
     Route::get('/del_customer/{id}', [CustomerController::class, 'del_customer'])->name('del_customer');
     Route::get('/orders', [CustomerController::class, 'orders'])->name('orders');
+    Route::get('/orders/create', [CustomerController::class, 'createOrder'])->name('orders.create');
+    Route::get('/orders/user-autofill/{id}', [CustomerController::class, 'userAutofill'])->name('orders.userAutofill');
+    Route::post('/orders/create', [CustomerController::class, 'storeOrder'])->name('orders.store');
     Route::get('/view_orders', [CustomerController::class, 'view_orders'])->name('view_orders');
     Route::get('/view_order_details/{id}', [CustomerController::class, 'view_order_details'])->name('view_order_details');
 
@@ -126,6 +130,8 @@ Route::middleware(['authusers'])->group(function () {
     // Subscription Packages
     Route::get('/subscriptionPackages', [\App\Http\Controllers\AdminController::class, 'subscriptionPackages'])->name('subscriptionPackages');
     Route::match(['post', 'put', 'delete'], '/subscriptionPackages/{id}', [\App\Http\Controllers\AdminController::class, 'updateSubscriptionPackage'])->name('updateSubscriptionPackage');
+    Route::get('/marketplaceSubscriptionPackages', [\App\Http\Controllers\AdminController::class, 'marketplaceSubscriptionPackages'])->name('marketplaceSubscriptionPackages');
+    Route::match(['post', 'put', 'delete'], '/marketplaceSubscriptionPackages/{id}', [\App\Http\Controllers\AdminController::class, 'updateMarketplaceSubscriptionPackage'])->name('updateMarketplaceSubscriptionPackage');
     
     // Sub Packages (AccountsController routes)
     Route::get('/subPackages', [AccountsController::class, 'subPackages'])->name('subPackages.index');
@@ -151,9 +157,29 @@ Route::middleware(['authusers'])->group(function () {
     Route::get('/view_pendingBulkBuyOrders', [AccountsController::class, 'viewPendingBulkBuyOrders'])->name('view_pendingBulkBuyOrders');
     Route::post('/pendingBulkBuyOrderApproval', [AccountsController::class, 'updatePendingBulkBuyOrderApproval'])->name('pendingBulkBuyOrderApproval');
 
+    // Pending Bulk Sell Orders Management
+    Route::get('/pendingBulkSellOrders', [AccountsController::class, 'pendingBulkSellOrders'])->name('pendingBulkSellOrders.index');
+    Route::get('/view_pendingBulkSellOrders', [AccountsController::class, 'viewPendingBulkSellOrders'])->name('view_pendingBulkSellOrders');
+    Route::post('/pendingBulkSellOrderCancel', [AccountsController::class, 'cancelPendingBulkSellOrder'])->name('pendingBulkSellOrderCancel');
+    Route::post('/pendingBulkSellOrderStatus', [AccountsController::class, 'updatePendingBulkSellOrderStatus'])->name('pendingBulkSellOrderStatus');
+    
+    // Marketplace Posts (Bulk Sell + Bulk Buy)
+    Route::get('/marketplacePosts', [AccountsController::class, 'marketplacePosts'])->name('marketplacePosts.index');
+    Route::get('/view_marketplacePosts', [AccountsController::class, 'viewMarketplacePosts'])->name('view_marketplacePosts');
+    Route::post('/marketplacePostReview', [AccountsController::class, 'marketplacePostReview'])->name('marketplacePostReview');
+
     // Live Scrap Prices (No Database)
     Route::get('/liveprices', [LivePricesController::class, 'index'])->name('liveprices.index');
     Route::post('/liveprices/scrape', [LivePricesController::class, 'scrapeNow'])->name('liveprices.scrape');
+    
+    // Tenders Scraper
+    Route::get('/tenders', [TenderController::class, 'index'])->name('tenders.index');
+    Route::get('/tenders-v2', [TenderController::class, 'index'])->name('tenders.v2');
+    Route::post('/tenders-v2/fix-saved', [TenderController::class, 'fixSavedV2Data'])->name('tenders.v2.fixSaved');
+    Route::post('/tenders-v2/refresh-docs', [TenderController::class, 'refreshV2TenderDocs'])->name('tenders.v2.refreshDocs');
+    Route::get('/tenders-v2/document', [TenderController::class, 'downloadV2Document'])->name('tenders.v2.document');
+    Route::post('/tenders/fetch', [TenderController::class, 'fetch'])->name('tenders.fetch');
+    Route::post('/tenders/refresh-detail', [TenderController::class, 'refreshDetail'])->name('tenders.refreshDetail');
     
     // Live Prices API endpoint (JSON) for Node.js backend
     Route::get('/api/liveprices', [LivePricesController::class, 'apiIndex'])->name('liveprices.api');
@@ -170,7 +196,9 @@ Route::middleware(['authusers'])->group(function () {
         Route::get('/dashboard/call-logs', [DashboardController::class, 'dashboardCallLogs'])->name('api.dashboard.call-logs');
         Route::get('/dashboard/v2-user-types', [DashboardController::class, 'v2DashboardData'])->name('api.dashboard.v2');
         Route::get('/dashboard/order/{id}', [DashboardController::class, 'orderDetails'])->name('api.dashboard.order');
+        Route::get('/dashboard/bulk-order/{id}', [DashboardController::class, 'bulkOrderDetails'])->name('api.dashboard.bulkOrder');
         Route::get('/dashboard/customer-app-orders', [DashboardController::class, 'getCustomerAppOrdersPaginated'])->name('api.dashboard.customerAppOrders');
+        Route::get('/dashboard/export-scheduled-orders', [DashboardController::class, 'exportScheduledOrdersWithVendors'])->name('api.dashboard.exportScheduledOrders');
         Route::post('/admin/order/{orderId}/add-nearby-n-users', [\App\Http\Controllers\AdminController::class, 'addNearbyNUsersToOrder'])->name('api.admin.order.addNearbyNUsers');
         Route::post('/admin/order/{orderId}/add-nearby-d-users', [\App\Http\Controllers\AdminController::class, 'addNearbyDUsersToOrder'])->name('api.admin.order.addNearbyDUsers');
         Route::post('/admin/order/{orderId}/add-bulk-notified-vendors', [\App\Http\Controllers\AdminController::class, 'addBulkNotifiedVendors'])->name('api.admin.order.addBulkNotifiedVendors');
@@ -178,6 +206,7 @@ Route::middleware(['authusers'])->group(function () {
         
         // Order Management Routes (Admin)
         Route::post('/admin/order/{orderId}/status', [DashboardController::class, 'updateOrderStatus'])->name('api.admin.order.updateStatus');
+        Route::post('/admin/order/{orderId}/reschedule-scheduled', [DashboardController::class, 'rescheduleScheduledOrder'])->name('api.admin.order.rescheduleScheduled');
         Route::post('/admin/order/{orderId}/assign-vendor', [DashboardController::class, 'assignVendorToOrder'])->name('api.admin.order.assignVendor');
         Route::get('/admin/vendors/search', [DashboardController::class, 'searchVendors'])->name('api.admin.vendors.search');
         Route::get('/admin/order/{orderId}/available-vendors', [DashboardController::class, 'getAvailableVendorsForOrder'])->name('api.admin.order.availableVendors');

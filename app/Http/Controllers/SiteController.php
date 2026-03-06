@@ -100,6 +100,16 @@ class SiteController extends Controller
                 'pagename' => 'Manage Site'
             ];
         }
+
+        // Fetch logged-in user details so Manage Site can display actual admin user data
+        $data['currentUser'] = null;
+        $sessionUserId = session('user_id');
+        if (!empty($sessionUserId)) {
+            $userResponse = $this->nodeApi->get('/admin/users/' . $sessionUserId);
+            if (($userResponse['status'] ?? null) === 'success' && isset($userResponse['data'])) {
+                $data['currentUser'] = is_array($userResponse['data']) ? (object)$userResponse['data'] : $userResponse['data'];
+            }
+        }
         
         return view('site/manage_site', $data);
     }

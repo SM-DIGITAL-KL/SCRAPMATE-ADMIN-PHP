@@ -26,6 +26,18 @@ class CustomerController extends Controller
     {
         $this->nodeApi = $nodeApi;
     }
+
+    private function getLoggedInZoneCode()
+    {
+        $email = strtolower((string) session('user_email', ''));
+        if (preg_match('/^zone(\d{1,2})@scrapmate\.co\.in$/', $email, $matches)) {
+            $zoneNumber = intval($matches[1]);
+            if ($zoneNumber >= 1 && $zoneNumber <= 48) {
+                return 'Z' . str_pad((string) $zoneNumber, 2, '0', STR_PAD_LEFT);
+            }
+        }
+        return null;
+    }
     public function customers(Request $request)
     {
         // Reduced logging for performance
@@ -166,16 +178,8 @@ class CustomerController extends Controller
             ];
         };
 
-        // Filter to v1 and v2 only (case-insensitive)
-        $filtered = $users->filter(function ($u) use ($normalize) {
-            $n = $normalize($u);
-            $v = $n['app_version'];
-            $vLower = strtolower($v);
-            if ($v === '' || $vLower === 'v1' || $vLower === 'v2') {
-                return true;
-            }
-            return false;
-        })->values();
+        // Keep all customer records from API; non-v2 app_version values are treated as V1 in UI.
+        $filtered = $users->values();
 
         // Sort: V2 users first (newest first), then V1 users (newest first)
         $filtered = $filtered->sort(function ($a, $b) use ($normalize) {
@@ -222,7 +226,7 @@ class CustomerController extends Controller
 
         \Illuminate\Support\Facades\Log::info('✅ view_users_customers: processing data', [
             'total_from_api' => $users->count(),
-            'after_v1_v2_filter' => $list->count(),
+            'after_filter' => $list->count(),
             'first_user_sample' => $list->first(),
         ]);
 
@@ -315,15 +319,8 @@ class CustomerController extends Controller
                 ];
             };
 
-            $filtered = $users->filter(function ($u) use ($normalize) {
-                $n = $normalize($u);
-                $v = $n['app_version'];
-                $vLower = strtolower($v);
-                if ($v === '' || $vLower === 'v1' || $vLower === 'v2') {
-                    return true;
-                }
-                return false;
-            })->values();
+            // Keep all customer records from API; non-v2 app_version values are treated as V1 in export.
+            $filtered = $users->values();
 
             $filtered = $filtered->sort(function ($a, $b) use ($normalize) {
                 $na = $normalize($a);
@@ -1067,6 +1064,556 @@ class CustomerController extends Controller
             Log::error('❌ Node API failed for view_order_details', ['response' => $apiResponse]);
             return view('customers/view_order_details', $data);
         }
+    }
+
+    public function createOrder()
+    {
+        $params = ['page' => 1, 'limit' => 99999];
+        $zone = $this->getLoggedInZoneCode();
+        if ($zone) {
+            $params['zone'] = $zone;
+        }
+        $usersResponse = $this->nodeApi->get('/admin/customers', $params, 60);
+        $groupedSubcategoriesResponse = $this->nodeApi->get('/subcategories/grouped', [], 30);
+
+        $users = [];
+        if (($usersResponse['status'] ?? '') === 'success') {
+            $rawUsers = $usersResponse['data']['users'] ?? [];
+            $users = collect($rawUsers)->map(function ($user) {
+                $arr = is_array($user) ? $user : (array) $user;
+                $customer = $arr['customer'] ?? [];
+                $customerArr = is_array($customer) ? $customer : (array) $customer;
+                $address = trim((string) ($arr['address'] ?? ''));
+                if ($address === '') {
+                    $address = trim((string) ($customerArr['address'] ?? ''));
+                }
+                if ($address === '') {
+                    $address = trim((string) ($arr['location'] ?? ($customerArr['location'] ?? '')));
+                }
+                if ($address === '') {
+                    $parts = [
+                        trim((string) ($arr['place'] ?? ($customerArr['place'] ?? ''))),
+                        trim((string) ($arr['state'] ?? ($customerArr['state'] ?? ''))),
+                        trim((string) ($arr['pincode'] ?? ($customerArr['pincode'] ?? ''))),
+                    ];
+                    $parts = array_values(array_filter($parts, function ($v) {
+                        return $v !== '';
+                    }));
+                    $address = implode(', ', $parts);
+                }
+                $latitude = '';
+                $longitude = '';
+
+                $latLogRaw = $arr['lat_log'] ?? ($arr['latlng'] ?? ($arr['location_lat_lng'] ?? ($customerArr['lat_log'] ?? '')));
+                if (is_string($latLogRaw) && strpos($latLogRaw, ',') !== false) {
+                    $parts = array_map('trim', explode(',', $latLogRaw));
+                    if (count($parts) >= 2) {
+                        $latitude = $parts[0];
+                        $longitude = $parts[1];
+                    }
+                }
+
+                if ($latitude === '') {
+                    $latitude = (string) ($arr['latitude'] ?? ($arr['lat'] ?? ($customerArr['latitude'] ?? ($customerArr['lat'] ?? ''))));
+                }
+                if ($longitude === '') {
+                    $longitude = (string) ($arr['longitude'] ?? ($arr['lng'] ?? ($arr['long'] ?? ($customerArr['longitude'] ?? ($customerArr['lng'] ?? ($customerArr['long'] ?? ''))))));
+                }
+
+                return [
+                    'id' => $arr['id'] ?? null,
+                    'name' => trim((string) ($arr['name'] ?? ($customerArr['name'] ?? ''))),
+                    'email' => trim((string) ($arr['email'] ?? ($customerArr['email'] ?? ''))),
+                    'phone' => (string) ($arr['mob_num'] ?? ($arr['contact'] ?? ($customerArr['contact'] ?? ''))),
+                    'address' => $address,
+                    'latitude' => trim($latitude),
+                    'longitude' => trim($longitude),
+                    'app_type' => (string) ($arr['app_type'] ?? ''),
+                    'user_type' => (string) ($arr['user_type'] ?? ''),
+                ];
+            })
+            ->filter(function ($user) {
+                return !empty($user['id']);
+            })
+            ->sortBy(function ($user) {
+                return strtolower($user['name'] ?: ('user-' . $user['id']));
+            })
+            ->values()
+            ->all();
+        }
+
+        $categories = [];
+        $subcategories = [];
+        if (($groupedSubcategoriesResponse['status'] ?? '') === 'success') {
+            $groups = $groupedSubcategoriesResponse['data'] ?? [];
+
+            foreach ($groups as $group) {
+                $mainCategory = $group['main_category'] ?? [];
+                $mainCategoryId = $mainCategory['id'] ?? null;
+                $mainCategoryName = $mainCategory['name'] ?? ($mainCategory['category_name'] ?? ($mainCategory['cat_name'] ?? 'Main Category'));
+                $items = $group['subcategories'] ?? [];
+
+                if ($mainCategoryId) {
+                    $categories[] = [
+                        'id' => $mainCategoryId,
+                        'name' => $mainCategoryName,
+                    ];
+                }
+
+                foreach ($items as $item) {
+                    $subcategoryId = $item['id'] ?? null;
+                    if (!$subcategoryId) {
+                        continue;
+                    }
+
+                    $subcategories[] = [
+                        'id' => $subcategoryId,
+                        'name' => $item['subcategory_name'] ?? 'Subcategory',
+                        'main_category_id' => $mainCategoryId,
+                        'main_category_name' => $mainCategoryName,
+                        'default_price' => (float) ($item['default_price'] ?? 0),
+                        'price_unit' => (string) ($item['price_unit'] ?? 'kg'),
+                    ];
+                }
+            }
+        }
+
+        usort($subcategories, function ($a, $b) {
+            return strcmp(
+                strtolower($a['main_category_name'] . ' - ' . $a['name']),
+                strtolower($b['main_category_name'] . ' - ' . $b['name'])
+            );
+        });
+        $categories = collect($categories)
+            ->unique('id')
+            ->sortBy(function ($item) {
+                return strtolower($item['name'] ?? '');
+            })
+            ->values()
+            ->all();
+
+        return view('customers/create_order', [
+            'pagename' => 'Create Order',
+            'users' => $users,
+            'categories' => $categories,
+            'subcategories' => $subcategories,
+        ]);
+    }
+
+    public function storeOrder(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|numeric',
+            'category_ids' => 'required|array|min:1',
+            'category_ids.*' => 'numeric',
+            'subcategory_ids' => 'required|array|min:1',
+            'subcategory_ids.*' => 'numeric',
+            'subcategory_weights' => 'nullable|array',
+            'subcategory_weights.*' => 'nullable|numeric|min:0',
+            'address' => 'required|string|max:1000',
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'estim_weight' => 'nullable|numeric|min:0',
+            'estim_price' => 'nullable|numeric|min:0',
+            'photos' => 'nullable|array|max:6',
+            'photos.*' => 'image|mimes:jpeg,jpg,png,webp|max:10240',
+        ]);
+
+        $zone = $this->getLoggedInZoneCode();
+        if ($zone) {
+            $zoneUserCheck = $this->nodeApi->get('/admin/customer-autofill/' . (int) $request->input('user_id'), ['zone' => $zone], 15);
+            if (($zoneUserCheck['status'] ?? '') !== 'success') {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', $zoneUserCheck['msg'] ?? 'Selected user is outside your zone.');
+            }
+        }
+
+        $selectedCategoryIds = collect($request->input('category_ids', []))
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        $selectedSubcategoryIds = collect($request->input('subcategory_ids', []))
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        $rawSubcategoryWeights = $request->input('subcategory_weights', []);
+        $subcategoryWeights = [];
+        if (is_array($rawSubcategoryWeights)) {
+            foreach ($rawSubcategoryWeights as $subId => $weight) {
+                $normalizedSubId = (int) $subId;
+                if ($normalizedSubId <= 0) {
+                    continue;
+                }
+                $weightValue = trim((string) $weight);
+                if ($weightValue === '') {
+                    continue;
+                }
+                $subcategoryWeights[$normalizedSubId] = max(0, (float) $weightValue);
+            }
+        }
+
+        $globalEstimWeight = max(0, (float) $request->input('estim_weight', 0));
+        $orderDetails = [];
+
+        $groupedSubcategoriesResponse = $this->nodeApi->get('/subcategories/grouped', [], 30);
+        if (($groupedSubcategoriesResponse['status'] ?? '') === 'success') {
+            $groups = $groupedSubcategoriesResponse['data'] ?? [];
+            $subcategoryMap = [];
+
+            foreach ($groups as $group) {
+                $mainCategory = $group['main_category'] ?? [];
+                $mainCategoryId = (int) ($mainCategory['id'] ?? 0);
+                $mainCategoryName = $mainCategory['name'] ?? ($mainCategory['category_name'] ?? ($mainCategory['cat_name'] ?? 'Main Category'));
+                $items = $group['subcategories'] ?? [];
+                foreach ($items as $item) {
+                    $subId = (int) ($item['id'] ?? 0);
+                    if ($subId <= 0) {
+                        continue;
+                    }
+                    $subcategoryMap[$subId] = [
+                        'subcategory_id' => $subId,
+                        'subcategory_name' => $item['subcategory_name'] ?? 'Selected Subcategory',
+                        'main_category_id' => $mainCategoryId,
+                        'main_category_name' => $mainCategoryName,
+                        'default_price' => (float) ($item['default_price'] ?? 0),
+                        'price_unit' => (string) ($item['price_unit'] ?? 'kg'),
+                    ];
+                }
+            }
+
+            foreach ($selectedSubcategoryIds as $subId) {
+                if (!isset($subcategoryMap[$subId])) {
+                    return redirect()->back()
+                        ->withInput()
+                        ->with('error', 'One or more selected subcategories are invalid.');
+                }
+                $meta = $subcategoryMap[$subId];
+                if (!in_array((int) $meta['main_category_id'], $selectedCategoryIds, true)) {
+                    return redirect()->back()
+                        ->withInput()
+                        ->with('error', 'Selected subcategories must belong to selected categories.');
+                }
+                $orderDetails[] = [
+                    'subcategory_id' => $meta['subcategory_id'],
+                    'subcategory_name' => $meta['subcategory_name'],
+                    'main_category_id' => $meta['main_category_id'],
+                    'main_category_name' => $meta['main_category_name'],
+                    'material_name' => $meta['subcategory_name'],
+                    'name' => $meta['subcategory_name'],
+                    'quantity' => array_key_exists($subId, $subcategoryWeights)
+                        ? (float) $subcategoryWeights[$subId]
+                        : $globalEstimWeight,
+                    'preferred_price' => (float) ($meta['default_price'] ?? 0),
+                    'price_unit' => (string) ($meta['price_unit'] ?? 'kg'),
+                ];
+            }
+        } else {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Unable to load subcategories from API.');
+        }
+
+        $estimWeight = round(array_reduce($orderDetails, function ($sum, $detail) {
+            return $sum + (float) ($detail['quantity'] ?? 0);
+        }, 0), 2);
+        if ($estimWeight <= 0) {
+            $estimWeight = $globalEstimWeight;
+        }
+
+        $requestedEstimPrice = trim((string) $request->input('estim_price', ''));
+        if ($requestedEstimPrice !== '') {
+            $estimPrice = (float) $requestedEstimPrice;
+        } else {
+            $estimPrice = round(array_reduce($orderDetails, function ($sum, $detail) {
+                $quantity = (float) ($detail['quantity'] ?? 0);
+                $price = (float) ($detail['preferred_price'] ?? 0);
+                return $sum + ($quantity * $price);
+            }, 0), 2);
+        }
+
+        foreach ($orderDetails as $index => $detail) {
+            $qty = (float) ($detail['quantity'] ?? 0);
+            $unitPrice = (float) ($detail['preferred_price'] ?? 0);
+            $lineTotal = round($qty * $unitPrice, 2);
+            $orderDetails[$index]['expected_weight_kg'] = $qty;
+            $orderDetails[$index]['weight'] = $qty;
+            $orderDetails[$index]['price_per_kg'] = $unitPrice;
+            $orderDetails[$index]['amount_per_kg'] = $unitPrice;
+            $orderDetails[$index]['price'] = $lineTotal;
+            $orderDetails[$index]['total_price'] = $lineTotal;
+        }
+
+        if ($requestedEstimPrice !== '' && count($orderDetails) > 0) {
+            $requestedTotal = (float) $requestedEstimPrice;
+            $totalQty = array_reduce($orderDetails, function ($sum, $detail) {
+                return $sum + (float) ($detail['quantity'] ?? 0);
+            }, 0);
+
+            if ($totalQty > 0) {
+                $uniformUnitPrice = round($requestedTotal / $totalQty, 2);
+                $runningTotal = 0.0;
+
+                foreach ($orderDetails as $idx => $detail) {
+                    $qty = (float) ($detail['quantity'] ?? 0);
+                    $lineTotal = round($qty * $uniformUnitPrice, 2);
+
+                    // Keep exact total aligned with requested amount by adjusting final line.
+                    if ($idx === count($orderDetails) - 1) {
+                        $lineTotal = round($requestedTotal - $runningTotal, 2);
+                    }
+
+                    $orderDetails[$idx]['preferred_price'] = $uniformUnitPrice;
+                    $orderDetails[$idx]['price_per_kg'] = $uniformUnitPrice;
+                    $orderDetails[$idx]['amount_per_kg'] = $uniformUnitPrice;
+                    $orderDetails[$idx]['price'] = $lineTotal;
+                    $orderDetails[$idx]['total_price'] = $lineTotal;
+                    $runningTotal += $lineTotal;
+                }
+            } else {
+                $orderDetails[0]['price'] = $requestedTotal;
+                $orderDetails[0]['total_price'] = $requestedTotal;
+            }
+        }
+
+        $payload = [
+            'customer_id' => (string) $request->input('user_id'),
+            'orderdetails' => json_encode($orderDetails),
+            'customerdetails' => trim((string) $request->input('address')),
+            'latitude' => (string) $request->input('latitude'),
+            'longitude' => (string) $request->input('longitude'),
+            'estim_weight' => (string) $estimWeight,
+            'estim_price' => (string) $estimPrice,
+            'preferred_pickup_time' => now()->toIso8601String(),
+        ];
+
+        $files = [];
+        $photos = $request->file('photos', []);
+        $photos = is_array($photos) ? array_slice($photos, 0, 6) : [];
+        foreach ($photos as $index => $photo) {
+            if ($photo && $photo->isValid()) {
+                $files['image' . ($index + 1)] = $photo;
+            }
+        }
+
+        $response = $this->nodeApi->postMultipartWithFiles('/v2/orders/pickup-request', $payload, $files, 90);
+
+        if (($response['status'] ?? '') === 'success') {
+            $orderNumber = $response['data']['order_number'] ?? null;
+            $successMessage = $orderNumber
+                ? 'Order created successfully. Order Number: ' . $orderNumber
+                : 'Order created successfully.';
+            return redirect()->route('orders')->with('success', $successMessage);
+        }
+
+        return redirect()->back()
+            ->withInput()
+            ->with('error', $response['msg'] ?? 'Failed to create order.');
+    }
+
+    public function userAutofill($id)
+    {
+        $address = '';
+        $latitude = '';
+        $longitude = '';
+        $customerRecordId = null;
+        $zone = $this->getLoggedInZoneCode();
+        $zoneParams = $zone ? ['zone' => $zone] : [];
+
+        // Primary source: dedicated autofill endpoint (if deployed in Node backend)
+        $response = $this->nodeApi->get('/admin/customer-autofill/' . $id, $zoneParams, 15);
+        if ($zone && ($response['status'] ?? '') !== 'success') {
+            return response()->json([
+                'status' => 'error',
+                'msg' => $response['msg'] ?? 'Access denied for this zone',
+                'data' => null,
+            ], 403);
+        }
+        if (($response['status'] ?? '') === 'success' && isset($response['data'])) {
+            $address = trim((string) ($response['data']['address'] ?? ''));
+            $latitude = trim((string) ($response['data']['latitude'] ?? ''));
+            $longitude = trim((string) ($response['data']['longitude'] ?? ''));
+        }
+
+        // Fallback 1: derive from /admin/customers list (works on older Node builds)
+        if ($address === '' || $latitude === '' || $longitude === '') {
+            $customersParams = ['page' => 1, 'limit' => 99999];
+            if ($zone) {
+                $customersParams['zone'] = $zone;
+            }
+            $customersResponse = $this->nodeApi->get('/admin/customers', $customersParams, 60);
+            if (($customersResponse['status'] ?? '') === 'success') {
+                $users = $customersResponse['data']['users'] ?? [];
+                foreach ($users as $user) {
+                    $arr = is_array($user) ? $user : (array) $user;
+                    if ((string) ($arr['id'] ?? '') !== (string) $id) {
+                        continue;
+                    }
+
+                    $customer = $arr['customer'] ?? [];
+                    $customerArr = is_array($customer) ? $customer : (array) $customer;
+                    $customerRecordId = $customerArr['id'] ?? null;
+
+                    if ($address === '') {
+                        $address = trim((string) ($arr['address'] ?? ($customerArr['address'] ?? ($arr['location'] ?? ($customerArr['location'] ?? '')))));
+                    }
+
+                    $latLogRaw = $arr['lat_log'] ?? ($arr['latlng'] ?? ($arr['location_lat_lng'] ?? ($customerArr['lat_log'] ?? '')));
+                    if (is_string($latLogRaw) && strpos($latLogRaw, ',') !== false) {
+                        $parts = array_map('trim', explode(',', $latLogRaw));
+                        if (count($parts) >= 2) {
+                            if ($latitude === '') $latitude = (string) $parts[0];
+                            if ($longitude === '') $longitude = (string) $parts[1];
+                        }
+                    }
+
+                    if ($latitude === '') {
+                        $latitude = trim((string) ($arr['latitude'] ?? ($arr['lat'] ?? ($customerArr['latitude'] ?? ($customerArr['lat'] ?? '')))));
+                    }
+                    if ($longitude === '') {
+                        $longitude = trim((string) ($arr['longitude'] ?? ($arr['lng'] ?? ($arr['long'] ?? ($customerArr['longitude'] ?? ($customerArr['lng'] ?? ($customerArr['long'] ?? '')))))));
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Fallback 2: use v2 saved addresses API (works for address book entries)
+        if ($address === '' || $latitude === '' || $longitude === '') {
+            $addressLookupIds = array_values(array_unique(array_filter([
+                $customerRecordId ? (string) $customerRecordId : null,
+                (string) $id,
+            ])));
+
+            foreach ($addressLookupIds as $lookupId) {
+                $addressResponse = $this->nodeApi->get('/v2/addresses/customer/' . $lookupId, [], 20);
+                if (($addressResponse['status'] ?? '') !== 'success' || empty($addressResponse['data']) || !is_array($addressResponse['data'])) {
+                    continue;
+                }
+
+                $savedAddresses = $addressResponse['data'];
+                $selectedAddress = $savedAddresses[0] ?? [];
+                $addr = is_array($selectedAddress) ? $selectedAddress : (array) $selectedAddress;
+
+                if ($address === '') {
+                    $address = trim((string) ($addr['address'] ?? ($addr['full_address'] ?? ($addr['location'] ?? ''))));
+                }
+
+                if ($latitude === '' || $longitude === '') {
+                    $addrLatLog = (string) ($addr['lat_log'] ?? '');
+                    if ($addrLatLog !== '' && strpos($addrLatLog, ',') !== false) {
+                        $parts = array_map('trim', explode(',', $addrLatLog));
+                        if (count($parts) >= 2) {
+                            if ($latitude === '') $latitude = (string) $parts[0];
+                            if ($longitude === '') $longitude = (string) $parts[1];
+                        }
+                    }
+
+                    if ($latitude === '') {
+                        $latitude = trim((string) ($addr['latitude'] ?? ($addr['lat'] ?? '')));
+                    }
+                    if ($longitude === '') {
+                        $longitude = trim((string) ($addr['longitude'] ?? ($addr['lng'] ?? ($addr['long'] ?? ''))));
+                    }
+                }
+
+                if ($address !== '' || ($latitude !== '' && $longitude !== '')) {
+                    break;
+                }
+            }
+        }
+
+        // Fallback 3: get from v2 profile (customer profile data)
+        if ($address === '' || $latitude === '' || $longitude === '') {
+            $profileResponse = $this->nodeApi->get('/v2/profile/' . $id, [], 20);
+            if (($profileResponse['status'] ?? '') === 'success' && !empty($profileResponse['data'])) {
+                $profile = is_array($profileResponse['data']) ? $profileResponse['data'] : (array) $profileResponse['data'];
+                $customerProfile = $profile['customer'] ?? [];
+                $customerArr = is_array($customerProfile) ? $customerProfile : (array) $customerProfile;
+
+                if ($address === '') {
+                    $address = trim((string) ($customerArr['address'] ?? ($profile['address'] ?? ($customerArr['location'] ?? ($profile['location'] ?? '')))));
+                }
+
+                if ($latitude === '' || $longitude === '') {
+                    $profileLatLog = (string) ($customerArr['lat_log'] ?? ($profile['lat_log'] ?? ''));
+                    if ($profileLatLog !== '' && strpos($profileLatLog, ',') !== false) {
+                        $parts = array_map('trim', explode(',', $profileLatLog));
+                        if (count($parts) >= 2) {
+                            if ($latitude === '') $latitude = (string) $parts[0];
+                            if ($longitude === '') $longitude = (string) $parts[1];
+                        }
+                    }
+
+                    if ($latitude === '') {
+                        $latitude = trim((string) ($customerArr['latitude'] ?? ($customerArr['lat'] ?? ($profile['latitude'] ?? ($profile['lat'] ?? '')))));
+                    }
+                    if ($longitude === '') {
+                        $longitude = trim((string) ($customerArr['longitude'] ?? ($customerArr['lng'] ?? ($customerArr['long'] ?? ($profile['longitude'] ?? ($profile['lng'] ?? ($profile['long'] ?? '')))))));
+                    }
+                }
+            }
+        }
+
+        // Fallback 4: derive from most recent order (customerdetails/lat_log)
+        if ($address === '' || $latitude === '' || $longitude === '') {
+            $recentOrdersResponse = $this->nodeApi->get('/customer/recent-orders/' . $id, [], 20);
+            if (($recentOrdersResponse['status'] ?? '') === 'success' && !empty($recentOrdersResponse['data']) && is_array($recentOrdersResponse['data'])) {
+                $firstOrder = $recentOrdersResponse['data'][0] ?? [];
+                $order = is_array($firstOrder) ? $firstOrder : (array) $firstOrder;
+
+                if ($address === '') {
+                    $cd = $order['customerdetails'] ?? '';
+                    if (is_string($cd)) {
+                        $json = json_decode($cd, true);
+                        if (is_array($json)) {
+                            $address = trim((string) ($json['address'] ?? ($json['customerdetails'] ?? '')));
+                        } else {
+                            $address = trim($cd);
+                        }
+                    } elseif (is_array($cd)) {
+                        $address = trim((string) ($cd['address'] ?? ($cd['customerdetails'] ?? '')));
+                    } elseif (is_object($cd)) {
+                        $address = trim((string) ($cd->address ?? ($cd->customerdetails ?? '')));
+                    }
+                }
+
+                if ($latitude === '' || $longitude === '') {
+                    $orderLatLog = (string) ($order['lat_log'] ?? '');
+                    if ($orderLatLog !== '' && strpos($orderLatLog, ',') !== false) {
+                        $parts = array_map('trim', explode(',', $orderLatLog));
+                        if (count($parts) >= 2) {
+                            if ($latitude === '') $latitude = (string) $parts[0];
+                            if ($longitude === '') $longitude = (string) $parts[1];
+                        }
+                    }
+                }
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'msg' => 'Autofill data retrieved',
+            'data' => [
+                'address' => $address,
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+            ],
+        ]);
     }
     
     public function del_customer($id)

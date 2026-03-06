@@ -7,18 +7,36 @@
         'name' => session('user_name', 'Admin'),
         'email' => session('user_email', '')
     ];
+    $is_zone_email = preg_match('/^zone/i', (string) $auth_user->email) === 1;
 @endphp
 <div class="dlabnav">
 <div class="dlabnav-scroll">
     <ul class="metismenu" id="menu">
+        @if(!$is_zone_email)
         <li><a href="{{ route('dashboard') }}" >
                 <i class="material-symbols-outlined">home</i>
                 <span class="nav-text">Dashboard</span>
             </a>
         </li>
+        @endif
         <li><a href="{{ route('admin.dashboard.v2') }}" >
                 <i class="material-symbols-outlined">dashboard</i>
                 <span class="nav-text">V2 User Types Dashboard</span>
+            </a>
+        </li>
+        <li><a href="{{ route('tenders.index') }}" >
+                <i class="material-icons">gavel</i>
+                <span class="nav-text">Tenders</span>
+            </a>
+        </li>
+        <li><a href="{{ route('tenders.v2') }}" >
+                <i class="material-icons">gavel</i>
+                <span class="nav-text">Tender V2</span>
+            </a>
+        </li>
+        <li><a href="{{route('marketplacePosts.index')}}">
+                <i class="material-symbols-outlined">storefront</i>
+                <span class="nav-text">Marketplace Posts</span>
             </a>
         </li>
         @if(App\Models\User::permission($auth_user->user_type,'Users Manage',$auth_user->id))
@@ -28,7 +46,9 @@
             </a>
             <ul aria-expanded="false">
                 <li><a href="{{ route('users') }}">Customers (V1 & V2)</a></li>
+                @if(!$is_zone_email)
                 <li><a href="{{ route('set_permission') }}">Set Permission</a></li>
+                @endif
             </ul>
         </li>
         @endif
@@ -52,7 +72,9 @@
             </a>
             <ul aria-expanded="false">
                 <li><a href="{{ route('newUsers') }}">New Users Manage</a></li>
+                @if(!$is_zone_email)
                 <li><a href="{{ route('agents') }}">Vendor Manage</a></li>
+                @endif
                 <li><a href="{{ route('b2bUsers') }}">B2B Manage</a></li>
                 <li><a href="{{ route('b2cUsers') }}">B2C Manage</a></li>
                 <li><a href="{{ route('srUsers') }}">SR Manage</a></li>
@@ -69,7 +91,7 @@
             <span class="nav-text">Schools</span></a>
         </li>
         @endif --}}
-        @if(App\Models\User::permission($auth_user->user_type,'Custormers',$auth_user->id))
+        @if(App\Models\User::permission($auth_user->user_type,'Custormers',$auth_user->id) && !$is_zone_email)
         <li><a href="{{ route('customers') }}" >
                 <i class="material-symbols-outlined">person</i>
                 <span class="nav-text">Customers</span>
@@ -77,6 +99,11 @@
         </li>
         @endif
         @if(App\Models\User::permission($auth_user->user_type,'Orders',$auth_user->id))
+        <li><a href="{{ route('orders.create') }}" >
+            <i class="material-symbols-outlined">add_shopping_cart</i>
+            <span class="nav-text">Create Order</span>
+            </a>
+        </li>
         <li><a href="{{ route('orders') }}" >
             <i class="material-symbols-outlined">receipt_long</i>
             <span class="nav-text">Orders</span>
@@ -98,7 +125,18 @@
                 <li><a href="{{route('subscriptionPackages')}}">Manage Packages</a></li>
                 <li><a href="{{route('subcribersList.index')}}">Subscribers List</a></li>
                 <li><a href="{{route('paidSubscriptions.index')}}">Paid Subscriptions</a></li>
+                @if(!$is_zone_email)
                 <li><a href="{{route('pendingBulkBuyOrders.index')}}">Pending Bulk Buy Orders</a></li>
+                <li><a href="{{route('pendingBulkSellOrders.index')}}">Pending Bulk Sell Orders</a></li>
+                @endif
+            </ul>
+        </li>
+        <li><a class="has-arrow " href="javascript:void(0);" aria-expanded="false">
+                <i class="material-symbols-outlined">storefront</i>
+                <span class="nav-text">Market Place Accounts</span>
+            </a>
+            <ul aria-expanded="false">
+                <li><a href="{{route('marketplaceSubscriptionPackages')}}">Manage Packages</a></li>
             </ul>
         </li>
         @if(App\Models\User::permission($auth_user->user_type,'Custom Notification',$auth_user->id))
