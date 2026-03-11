@@ -5,6 +5,8 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use App\Http\Middleware\AuthenticateUser;
 use App\Http\Middleware\ApiTokenIsValid;
+use App\Http\Middleware\BlockZoneApiRequests;
+use App\Http\Middleware\BlockZonePageRequests;
 
 // Configure the application
 $app = Application::configure(basePath: dirname(__DIR__))
@@ -23,7 +25,9 @@ $app = Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'authusers' => AuthenticateUser::class,
-            'apicheck' => ApiTokenIsValid::class
+            'apicheck' => ApiTokenIsValid::class,
+            'blockzoneapi' => BlockZoneApiRequests::class,
+            'blockzonepages' => BlockZonePageRequests::class
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

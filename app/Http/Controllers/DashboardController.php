@@ -17,6 +17,14 @@ class DashboardController extends Controller
 
     public function index(Request $request)
     {
+        $loggedInEmail = strtolower((string) session('user_email', ''));
+        if (preg_match('/^zone(\d{1,2})@scrapmate\.co\.in$/', $loggedInEmail, $matches)) {
+            $zoneNumber = intval($matches[1]);
+            if ($zoneNumber >= 1 && $zoneNumber <= 48) {
+                return redirect()->route('admin.dashboard.v2');
+            }
+        }
+
         // Cache clearing removed - data is fetched directly from database
         
         // Return minimal data - actual data will be loaded via AJAX
@@ -226,7 +234,9 @@ class DashboardController extends Controller
     public function orderDetails($id)
     {
         try {
-            $apiResponse = $this->nodeApi->get('/customer/order/' . $id, [], 60);
+            // Use admin order-details endpoint that enriches notified vendors from DB directly.
+            // This avoids stale customer-order cache in dashboard modal.
+            $apiResponse = $this->nodeApi->get('/admin/dashboard/order/' . $id . '/notified-vendors', [], 60);
             
             if (isset($apiResponse['status']) && $apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
                 return response()->json([
@@ -288,6 +298,7 @@ class DashboardController extends Controller
             $length = intval($request->get('length', 10));
             $search = $request->get('search', []);
             $searchValue = isset($search['value']) ? $search['value'] : '';
+            $state = trim((string) $request->get('state', ''));
             
             // Calculate page number (DataTables uses start/length, we need page/limit)
             $page = $length > 0 ? floor($start / $length) + 1 : 1;
@@ -309,6 +320,54 @@ class DashboardController extends Controller
             
             if ($searchValue) {
                 $params['search'] = $searchValue;
+            }
+            if ($state !== '') {
+                // Node endpoint currently ignores `state`, so enforce strict state filtering here.
+                $allOrders = $this->fetchAllCustomerAppOrders($params);
+
+                $stateFiltered = array_values(array_filter($allOrders, function ($order) use ($state) {
+                    return $this->orderMatchesState((array) $order, $state);
+                }));
+
+                $recordsTotal = count($stateFiltered);
+                $filteredOrders = $stateFiltered;
+
+                if ($searchValue !== '') {
+                    $filteredOrders = array_values(array_filter($stateFiltered, function ($order) use ($searchValue) {
+                        return $this->orderMatchesSearch((array) $order, $searchValue);
+                    }));
+                }
+
+                usort($filteredOrders, function ($a, $b) {
+                    $aArr = (array) $a;
+                    $bArr = (array) $b;
+                    $dateA = isset($aArr['created_at']) ? strtotime((string) $aArr['created_at']) : 0;
+                    $dateB = isset($bArr['created_at']) ? strtotime((string) $bArr['created_at']) : 0;
+                    if ($dateA !== $dateB) {
+                        return $dateB <=> $dateA;
+                    }
+                    return intval($bArr['id'] ?? 0) <=> intval($aArr['id'] ?? 0);
+                });
+
+                $recordsFiltered = count($filteredOrders);
+                $pageItems = ($length > 0)
+                    ? array_slice($filteredOrders, $start, $length)
+                    : $filteredOrders;
+
+                $formattedData = [];
+                foreach ($pageItems as $index => $order) {
+                    $row = $this->formatCustomerAppOrderRow((array) $order, $start + $index + 1);
+                    if ($row !== null) {
+                        $formattedData[] = $row;
+                    }
+                }
+
+                return response()->json([
+                    'draw' => $draw,
+                    'recordsTotal' => $recordsTotal,
+                    'recordsFiltered' => $recordsFiltered,
+                    'data' => $formattedData
+                ]);
             }
             
             try {
@@ -368,47 +427,9 @@ class DashboardController extends Controller
                 $formattedData = [];
                 
                 foreach ($orders as $index => $order) {
-                    try {
-                        // Handle both object and array formats
-                        $orderObj = is_array($order) ? (object)$order : $order;
-                        
-                        $orderDate = 'N/A';
-                        if (isset($orderObj->created_at) || isset($orderObj->date)) {
-                            $dateStr = $orderObj->created_at ?? $orderObj->date ?? null;
-                            if ($dateStr) {
-                                try {
-                                    $orderDate = date('Y-m-d', strtotime($dateStr));
-                                } catch (\Exception $e) {
-                                    $orderDate = 'N/A';
-                                }
-                            }
-                        }
-                        
-                        $amount = $orderObj->total_amount ?? $orderObj->estim_price ?? $orderObj->amount ?? '0.00';
-                        $status = $this->getStatusLabel($orderObj->status ?? 0);
-                        $orderId = $orderObj->id ?? 'N/A';
-                        
-                        $formattedData[] = [
-                            'DT_RowIndex' => $start + $index + 1,
-                            'id' => $orderId,
-                            'zone' => $orderObj->customer_zone ?? 'N/A',
-                            'order_number' => $orderObj->order_no ?? $orderObj->order_number ?? 'N/A',
-                            'customer_id' => $orderObj->customer_id ?? 'N/A',
-                            'shop_id' => $orderObj->shop_id ?? 'N/A',
-                            'status' => $status,
-                            'status_badge' => '<span class="badge badge-' . $this->getStatusColor($orderObj->status ?? 0) . '">' . $status . '</span>',
-                            'amount' => '₹' . number_format((float)$amount, 2),
-                            'date' => $orderDate,
-                            'action' => '<button class="btn btn-sm btn-primary" onclick="viewOrderDetails(' . $orderId . ', \'customer_app\')"><i class="fa fa-eye"></i> View Details</button>'
-                        ];
-                    } catch (\Exception $orderException) {
-                        Log::warning('Error formatting order', [
-                            'index' => $index,
-                            'error' => $orderException->getMessage(),
-                            'order' => $order
-                        ]);
-                        // Skip this order
-                        continue;
+                    $row = $this->formatCustomerAppOrderRow((array) $order, $start + $index + 1);
+                    if ($row !== null) {
+                        $formattedData[] = $row;
                     }
                 }
                 
@@ -443,6 +464,159 @@ class DashboardController extends Controller
                 'data' => [],
                 'error' => 'Error loading customer app orders'
             ], 500);
+        }
+    }
+
+    private function fetchAllCustomerAppOrders(array $baseParams): array
+    {
+        $allOrders = [];
+        $page = 1;
+        $perPage = 200;
+        $maxPages = 100;
+        $knownTotal = null;
+
+        do {
+            $params = $baseParams;
+            $params['page'] = $page;
+            $params['limit'] = $perPage;
+            unset($params['state'], $params['search']);
+
+            $apiResponse = $this->nodeApi->get('/admin/dashboard/customer-app-orders', $params, 90);
+            if (!is_array($apiResponse) || (($apiResponse['status'] ?? '') !== 'success')) {
+                break;
+            }
+
+            $batch = $apiResponse['data'] ?? [];
+            if (!is_array($batch)) {
+                $batch = [];
+            }
+
+            foreach ($batch as $order) {
+                $allOrders[] = (array) $order;
+            }
+
+            if ($knownTotal === null && isset($apiResponse['total'])) {
+                $knownTotal = intval($apiResponse['total']);
+            }
+
+            if (count($batch) < $perPage) {
+                break;
+            }
+            if ($knownTotal !== null && count($allOrders) >= $knownTotal) {
+                break;
+            }
+            $page++;
+        } while ($page <= $maxPages);
+
+        return $allOrders;
+    }
+
+    private function orderMatchesSearch(array $order, string $search): bool
+    {
+        $searchLower = strtolower(trim($search));
+        if ($searchLower === '') {
+            return true;
+        }
+
+        $haystack = implode(' ', [
+            strtolower((string) ($order['order_no'] ?? $order['order_number'] ?? '')),
+            strtolower((string) ($order['id'] ?? '')),
+            strtolower((string) ($order['customer_id'] ?? '')),
+            strtolower((string) ($order['shop_id'] ?? '')),
+            strtolower((string) ($order['state'] ?? $order['customer_state'] ?? '')),
+            strtolower((string) ($order['city'] ?? $order['customer_city'] ?? '')),
+            strtolower((string) ($order['customerdetails'] ?? '')),
+        ]);
+
+        return str_contains($haystack, $searchLower);
+    }
+
+    private function orderMatchesState(array $order, string $state): bool
+    {
+        $stateLower = strtolower(trim($state));
+        if ($stateLower === '') {
+            return true;
+        }
+
+        $texts = [];
+        foreach ([
+            'state',
+            'customer_state',
+            'city',
+            'customer_city',
+            'location',
+            'customer_address',
+            'customerdetails'
+        ] as $field) {
+            if (!empty($order[$field])) {
+                $texts[] = strtolower((string) $order[$field]);
+            }
+        }
+
+        if (!empty($order['customerdetails'])) {
+            $decoded = null;
+            if (is_array($order['customerdetails'])) {
+                $decoded = $order['customerdetails'];
+            } elseif (is_string($order['customerdetails'])) {
+                $decodedJson = json_decode($order['customerdetails'], true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decodedJson)) {
+                    $decoded = $decodedJson;
+                }
+            }
+            if (is_array($decoded)) {
+                foreach (['state', 'customer_state', 'city', 'customer_city', 'address', 'full_address'] as $k) {
+                    if (!empty($decoded[$k])) {
+                        $texts[] = strtolower((string) $decoded[$k]);
+                    }
+                }
+            }
+        }
+
+        foreach ($texts as $text) {
+            if (str_contains($text, $stateLower)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function formatCustomerAppOrderRow(array $order, int $rowIndex): ?array
+    {
+        try {
+            $orderObj = (object) $order;
+            $orderDate = 'N/A';
+
+            if (isset($orderObj->created_at) || isset($orderObj->date)) {
+                $dateStr = $orderObj->created_at ?? $orderObj->date ?? null;
+                if ($dateStr) {
+                    $orderDate = date('Y-m-d', strtotime((string) $dateStr));
+                }
+            }
+
+            $amount = $orderObj->total_amount ?? $orderObj->estim_price ?? $orderObj->amount ?? '0.00';
+            $status = $this->getStatusLabel($orderObj->status ?? 0);
+            $orderId = $orderObj->id ?? 'N/A';
+
+            return [
+                'DT_RowIndex' => $rowIndex,
+                'id' => $orderId,
+                'zone' => $orderObj->customer_zone ?? 'N/A',
+                'order_number' => $orderObj->order_no ?? $orderObj->order_number ?? 'N/A',
+                'customer_id' => $orderObj->customer_id ?? 'N/A',
+                'shop_id' => $orderObj->shop_id ?? 'N/A',
+                'status' => $status,
+                'status_badge' => '<span class="badge badge-' . $this->getStatusColor($orderObj->status ?? 0) . '">' . $status . '</span>',
+                'amount' => '₹' . number_format((float) $amount, 2),
+                'date' => $orderDate,
+                'action' => '<button class="btn btn-sm btn-primary" onclick="viewOrderDetails(' . $orderId . ', \'customer_app\')"><i class="fa fa-eye"></i> View Details</button>'
+            ];
+        } catch (\Exception $orderException) {
+            Log::warning('Error formatting order row', [
+                'error' => $orderException->getMessage(),
+                'order' => $order
+            ]);
+            return null;
         }
     }
     

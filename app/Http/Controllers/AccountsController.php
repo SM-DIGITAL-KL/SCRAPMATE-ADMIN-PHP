@@ -764,6 +764,10 @@ class AccountsController extends Controller
 
     public function subcribersList()
     {
+        if ($this->getLoggedInZoneCode()) {
+            return redirect()->route('dashboard.index')->with('error', 'Subscribers List is not available for zone logins.');
+        }
+
         Log::info('🔵 AccountsController::subcribersList called - attempting to call Node.js API');
         $apiResponse = $this->nodeApi->get('/accounts/subscribers');
         
@@ -786,6 +790,13 @@ class AccountsController extends Controller
 
     public function view_subcribersList()
     {
+        if ($this->getLoggedInZoneCode()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Subscribers List is not available for zone logins.'
+            ], 403);
+        }
+
         Log::info('🔵 AccountsController::view_subcribersList called - attempting to call Node.js API');
         $params = [];
         $zone = $this->getLoggedInZoneCode();

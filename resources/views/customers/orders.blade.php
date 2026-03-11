@@ -1,73 +1,85 @@
 @extends('index')
 @section('content')
 
-<div class="content-body ">
+@php
+    $is_zone_email = preg_match('/^zone/i', (string) session('user_email', '')) === 1;
+@endphp
+
+
+<div class="content-body">
     <div class="container-fluid">
-        <div class="row">
-            <div class="col-12">
+        <div class="row mt-4">
+            <div class="col-xl-12">
                 <div class="card">
-                    <div class="card-body">
-                        @include('layouts.flashmessage')
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="card-title mb-0">Orders List</h4>
-                            <a href="{{ route('orders.create') }}" class="btn btn-primary btn-sm">
-                                Create Order
+                    <div class="card-header border-0 d-flex justify-content-between align-items-center flex-wrap">
+                        <h4 class="card-title mb-0">Recent Customer App Orders (v2)</h4>
+                        <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+                            @if(!$is_zone_email)
+                            <label for="customerOrdersStateFilter" class="mb-0 me-2">State</label>
+                            <select id="customerOrdersStateFilter" class="form-control form-control-sm me-2" style="min-width: 190px;">
+                                <option value="">All States</option>
+                                <option value="Andhra Pradesh">Andhra Pradesh</option>
+                                <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                                <option value="Assam">Assam</option>
+                                <option value="Bihar">Bihar</option>
+                                <option value="Chhattisgarh">Chhattisgarh</option>
+                                <option value="Goa">Goa</option>
+                                <option value="Gujarat">Gujarat</option>
+                                <option value="Haryana">Haryana</option>
+                                <option value="Himachal Pradesh">Himachal Pradesh</option>
+                                <option value="Jharkhand">Jharkhand</option>
+                                <option value="Karnataka">Karnataka</option>
+                                <option value="Kerala">Kerala</option>
+                                <option value="Madhya Pradesh">Madhya Pradesh</option>
+                                <option value="Maharashtra">Maharashtra</option>
+                                <option value="Manipur">Manipur</option>
+                                <option value="Meghalaya">Meghalaya</option>
+                                <option value="Mizoram">Mizoram</option>
+                                <option value="Nagaland">Nagaland</option>
+                                <option value="Odisha">Odisha</option>
+                                <option value="Punjab">Punjab</option>
+                                <option value="Rajasthan">Rajasthan</option>
+                                <option value="Sikkim">Sikkim</option>
+                                <option value="Tamil Nadu">Tamil Nadu</option>
+                                <option value="Telangana">Telangana</option>
+                                <option value="Tripura">Tripura</option>
+                                <option value="Uttar Pradesh">Uttar Pradesh</option>
+                                <option value="Uttarakhand">Uttarakhand</option>
+                                <option value="West Bengal">West Bengal</option>
+                                <option value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</option>
+                                <option value="Chandigarh">Chandigarh</option>
+                                <option value="Dadra and Nagar Haveli and Daman and Diu">Dadra and Nagar Haveli and Daman and Diu</option>
+                                <option value="Delhi">Delhi</option>
+                                <option value="Jammu and Kashmir">Jammu and Kashmir</option>
+                                <option value="Ladakh">Ladakh</option>
+                                <option value="Lakshadweep">Lakshadweep</option>
+                                <option value="Puducherry">Puducherry</option>
+                            </select>
+                            @endif
+                            <a href="/api/dashboard/export-scheduled-orders" class="btn btn-success btn-sm">
+                                <i class="fa fa-file-excel-o"></i> Download Scheduled Orders (Excel)
                             </a>
                         </div>
-                        <hr>
-                        
-                        <!-- Filter Buttons -->
-                        <div class="text-center mb-3">
-                            <a href="javascript:;" class="filterbutton btn btn-outline-warning btn-xs toggle-class" data-shop-type-id="1">Request Pending</a>
-                            <a href="javascript:;" class="filterbutton btn btn-outline-warning btn-xs toggle-class" data-shop-type-id="2">Shop Accepted</a>
-                            <a href="javascript:;" class="filterbutton btn btn-outline-warning btn-xs toggle-class" data-shop-type-id="3">Assigned Door Step Buyer</a>
-                            <a href="javascript:;" class="filterbutton btn btn-outline-success btn-xs toggle-class" data-shop-type-id="4">Completed</a>
-                            <a href="javascript:;" class="filterbutton btn btn-outline-danger btn-xs toggle-class" data-shop-type-id="5">Shop Declined</a>
-                            <a href="javascript:;" class="filterbutton btn btn-outline-danger btn-xs toggle-class" data-shop-type-id="6">Customer Cancelled</a>
-                        </div>
-                        <input type="hidden" id="status_id">
-                        
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <div class="d-flex justify-content-between align-items-center mb-3 px-3">
-                                    <div class="d-flex align-items-center">
-                                        <label class="me-2">Show</label>
-                                        <select class="form-select form-select-sm" style="width: auto;" id="entriesPerPage">
-                                            <option value="10">10</option>
-                                            <option value="20">20</option>
-                                            <option value="50">50</option>
-                                            <option value="100">100</option>
-                                        </select>
-                                        <label class="ms-2">entries</label>
-                                    </div>
-                                    <div>
-                                        <label class="me-2">Search:</label>
-                                        <input type="text" 
-                                               class="form-control form-control-sm d-inline-block" 
-                                               style="width: 200px;" 
-                                               id="searchInput" 
-                                               placeholder="Search orders...">
-                                    </div>
-                                </div>
-                                <table id="example4" class="table table-striped table-hover" style="margin-bottom: 0;">
-                                    <thead style="position: sticky; top: 0; z-index: 10;">
-                                        <tr style="background-color: #6c5ce7; color: white;">
-                                            <th style="min-width: 60px;">SL NO</th>
-                                            <th style="min-width: 150px;">ORDER NUMBER</th>
-                                            <th style="min-width: 120px;">STATUS</th>
-                                            <th style="min-width: 150px;">Shop||Customer</th>
-                                            <th style="min-width: 180px;">CUSTOMER</th>
-                                            <th style="min-width: 180px;">SHOP</th>
-                                            <th style="min-width: 120px;">ORDER DATE</th>
-                                            <th style="min-width: 100px;">APP TYPE</th>
-                                            <th style="min-width: 80px;">ACTION</th> 
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <!-- DataTable will populate this -->
-                                    </tbody>
-                                </table>
-                            </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-bordered" id="customerAppOrdersTable">
+                                <thead>
+                                    <tr>
+                                        <th>Sl.No</th>
+                                        <th>Order ID</th>
+                                        <th>Order Number</th>
+                                        <th>Customer ID</th>
+                                        <th>Shop ID</th>
+                                        <th>Status</th>
+                                        <th>Amount</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -76,103 +88,150 @@
     </div>
 </div>
 
+<!-- Order Details Modal -->
+<div class="modal fade" id="orderDetailsModal" tabindex="-1" role="dialog" aria-labelledby="orderDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="orderDetailsModalLabel">Order Details</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="orderDetailsContent">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
+
 @section('contentjs')
-<style>
-    #example4 td {
-        vertical-align: top;
-    }
-    /* Match customers page font styling */
-    #example4 {
-        font-family: inherit;
-    }
-    #example4 th {
-        font-weight: 600;
-    }
-    #example4 td {
-        font-size: 14px;
-    }
-    #example4_wrapper .dataTables_filter {
-        display: none; /* Hide default DataTable search */
-    }
-    #example4_wrapper .dataTables_length {
-        display: none; /* Hide default DataTable length */
-    }
-    #example4_wrapper .dataTables_info {
-        padding-left: 15px;
-        padding-top: 10px;
-    }
-    #example4_wrapper .dataTables_paginate {
-        padding-right: 15px;
-        padding-top: 10px;
-    }
-</style>
 <script>
-$(document).ready(function() {
-    let ordersTable = $('#example4').DataTable({
+let customerAppOrdersTable = null;
+
+function initializeCustomerAppOrdersTable() {
+    if (customerAppOrdersTable) {
+        customerAppOrdersTable.destroy();
+    }
+
+    customerAppOrdersTable = $('#customerAppOrdersTable').DataTable({
         processing: true,
         serverSide: true,
         destroy: true,
-        pageLength: 10,
-        lengthMenu: [[10, 20, 50, 100], [10, 20, 50, 100]],
         ajax: {
-            url: "{{ route('view_orders') }}",
+            url: "{{ route('api.dashboard.customerAppOrders') }}",
+            type: 'GET',
             data: function(d) {
-                d.status_id = $('#status_id').val();
+                d.state = $('#customerOrdersStateFilter').val() || '';
+            },
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            error: function(xhr, error, thrown) {
+                console.error('DataTables Ajax Error:', {
+                    xhr: xhr,
+                    error: error,
+                    thrown: thrown,
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText,
+                    responseJSON: xhr.responseJSON
+                });
+
+                let errorMsg = 'Error loading orders. ';
+                if (xhr.status === 0) {
+                    errorMsg += 'Network error - please check your connection.';
+                } else if (xhr.status === 404) {
+                    errorMsg += 'Endpoint not found.';
+                } else if (xhr.status === 500) {
+                    errorMsg += 'Server error.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg += ' ' + xhr.responseJSON.error;
+                    }
+                } else {
+                    errorMsg += 'Status: ' + xhr.status + ' ' + xhr.statusText;
+                }
+
+                alert(errorMsg);
             }
         },
         columns: [
-            { data: 'DT_RowIndex', orderable: false, searchable: false },
-            { data: 'order_number', name: 'order_number' },
-            { data: 'status', name: 'status' },
-            { data: 'callStatus', name: 'callStatus' },
-            { data: 'customerdetails', name: 'customerdetails' },
-            { data: 'shopdetails', name: 'shopdetails' },
-            { data: 'date', name: 'date' },
-            { data: 'app_type', name: 'app_type' },
-            { data: 'action', name: 'action', orderable: false, searchable: false },
-        ],
-        language: {
-            paginate: {
-                previous: '&lt;',
-                next: '&gt;'
+            {
+                data: 'DT_RowIndex',
+                name: 'DT_RowIndex',
+                orderable: false,
+                searchable: false
             },
-            processing: '<div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>',
-            emptyTable: 'No matching records found',
-            info: 'Showing _START_ to _END_ of _TOTAL_ entries',
-            infoEmpty: 'Showing 0 to 0 of 0 entries',
-            infoFiltered: '(filtered from _MAX_ total entries)'
-        },
-        drawCallback: function(settings) {
-            // Update entries per page dropdown to match current page length
-            $('#entriesPerPage').val(settings._iDisplayLength);
+            {
+                data: 'id',
+                name: 'id'
+            },
+            {
+                data: 'order_number',
+                name: 'order_number'
+            },
+            {
+                data: 'customer_id',
+                name: 'customer_id'
+            },
+            {
+                data: 'shop_id',
+                name: 'shop_id'
+            },
+            {
+                data: 'status_badge',
+                name: 'status',
+                orderable: true,
+                searchable: false
+            },
+            {
+                data: 'amount',
+                name: 'amount',
+                orderable: true,
+                searchable: false
+            },
+            {
+                data: 'date',
+                name: 'date',
+                orderable: true
+            },
+            {
+                data: 'action',
+                name: 'action',
+                orderable: false,
+                searchable: false
+            }
+        ],
+        order: [[1, 'desc']],
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+        language: {
+            processing: '<i class="fa fa-spinner fa-spin fa-3x fa-fw"></i><span class="sr-only">Loading...</span>'
         }
     });
-    
-    // Filter button click handler
-    $('.filterbutton').on('click', function () {
-        $(".filterbutton").removeClass("active text-light");
-        $(this).addClass("active text-light");
-        const status_id = $(this).data('shop-type-id');
-        $('#status_id').val(status_id);
-        ordersTable.ajax.reload();
-    });
-    
-    // Entries per page change handler
-    $('#entriesPerPage').on('change', function() {
-        const pageLength = parseInt($(this).val());
-        ordersTable.page.len(pageLength).draw();
-    });
-    
-    // Search input handler with debounce
-    let searchTimeout;
-    $('#searchInput').on('keyup', function() {
-        clearTimeout(searchTimeout);
-        const searchValue = $(this).val();
-        searchTimeout = setTimeout(function() {
-            ordersTable.search(searchValue).draw();
-        }, 500); // Wait 500ms after user stops typing
-    });
+
+    const stateFilter = document.getElementById('customerOrdersStateFilter');
+    if (stateFilter) {
+        stateFilter.addEventListener('change', function() {
+            customerAppOrdersTable.ajax.reload();
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCustomerAppOrdersTable();
 });
+
+@include('customers.partials.v2-order-details-functions')
 </script>
 @endsection

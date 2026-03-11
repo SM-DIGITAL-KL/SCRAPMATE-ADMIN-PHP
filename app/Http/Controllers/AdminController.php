@@ -28,6 +28,18 @@ class AdminController extends Controller
         $this->nodeApi = $nodeApi;
     }
 
+    private function getLoggedInZoneCode()
+    {
+        $email = strtolower((string) session('user_email', ''));
+        if (preg_match('/^zone(\d{1,2})@scrapmate\.co\.in$/', $email, $matches)) {
+            $zoneNumber = intval($matches[1]);
+            if ($zoneNumber >= 1 && $zoneNumber <= 48) {
+                return 'Z' . str_pad((string) $zoneNumber, 2, '0', STR_PAD_LEFT);
+            }
+        }
+        return null;
+    }
+
     public function dashboard(Request $request)
     {
         // Cache clearing removed - data is fetched directly from database
@@ -293,7 +305,8 @@ class AdminController extends Controller
             $params['approval_status'] = $approvalStatus;
         }
         
-        $apiResponse = $this->nodeApi->get('/admin/b2c-users', $params);
+        // B2C list can be heavy for zone-scoped lookups; avoid false-empty pages due default 10s timeout.
+        $apiResponse = $this->nodeApi->get('/admin/b2c-users', $params, 60);
         
         if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
             $data = $apiResponse['data'];
@@ -1337,6 +1350,7 @@ class AdminController extends Controller
     {
         Log::info('🔵 AdminController::custNotification called - attempting to call Node.js API');
         $apiResponse = $this->nodeApi->get('/admin/custNotification');
+        $loggedInZone = $this->getLoggedInZoneCode();
         
         Log::info('🔵 Node.js API Response for custNotification', [
             'status' => $apiResponse['status'] ?? 'unknown',
@@ -1351,11 +1365,13 @@ class AdminController extends Controller
                 return (object)$customer;
             });
             $data['pagename'] = 'Customer Notification';
+            $data['logged_in_zone'] = $loggedInZone;
             Log::info('✅ custNotification: Successfully retrieved customers', ['count' => $data['customer']->count()]);
         } else {
             Log::error('❌ Node API failed for custNotification', ['response' => $apiResponse]);
             $data['customer'] = collect([]);
             $data['pagename'] = 'Customer Notification';
+            $data['logged_in_zone'] = $loggedInZone;
         }
         
         return view('admin/custNotification', $data);
@@ -1365,10 +1381,17 @@ class AdminController extends Controller
     {
         if ($req->isMethod('post')) {
             Log::info('🔵 AdminController::sendCustNotification called - attempting to call Node.js API');
+            $loggedInZone = $this->getLoggedInZoneCode();
+            $requestedZone = strtoupper((string) $req->post('zone_code', ''));
+            $zoneCode = $loggedInZone ?: $requestedZone;
+            if (empty($zoneCode)) {
+                return Redirect::back()->with('error', 'Please select a target zone.');
+            }
             $apiData = [
                 'cust_ids' => $req->post('cust_ids'),
                 'message' => $req->post('message'),
-                'title' => $req->post('title')
+                'title' => $req->post('title'),
+                'zone_code' => $zoneCode
             ];
             
             Log::info('🔵 Sending customer notification', [
@@ -1397,6 +1420,7 @@ class AdminController extends Controller
     {
         Log::info('🔵 AdminController::vendorNotification called - attempting to call Node.js API');
         $apiResponse = $this->nodeApi->get('/admin/vendorNotification');
+        $loggedInZone = $this->getLoggedInZoneCode();
         
         Log::info('🔵 Node.js API Response for vendorNotification', [
             'status' => $apiResponse['status'] ?? 'unknown',
@@ -1412,6 +1436,7 @@ class AdminController extends Controller
                 return (object)$shop;
             });
             $data['pagename'] = 'Vendor Notification';
+            $data['logged_in_zone'] = $loggedInZone;
             
             // Get criteria counts from API response if available, otherwise set defaults
             $data['criteria_counts'] = [
@@ -1429,7 +1454,8 @@ class AdminController extends Controller
                 'shops' => collect([]),
                 'shops_count' => 0,
                 'criteria_counts' => ['1' => 0, '2' => 0, '3' => 0],
-                'pagename' => 'Vendor Notification'
+                'pagename' => 'Vendor Notification',
+                'logged_in_zone' => $loggedInZone
             ];
         }
         
@@ -1440,11 +1466,18 @@ class AdminController extends Controller
     {
         if ($req->isMethod('post')) {
             Log::info('🔵 AdminController::sendVendorNotification called - attempting to call Node.js API');
+            $loggedInZone = $this->getLoggedInZoneCode();
+            $requestedZone = strtoupper((string) $req->post('zone_code', ''));
+            $zoneCode = $loggedInZone ?: $requestedZone;
+            if (empty($zoneCode)) {
+                return Redirect::back()->with('error', 'Please select a target zone.');
+            }
             $apiData = [
                 'vendor_ids' => $req->post('vendor_ids'),
                 'message' => $req->post('message'),
                 'title' => $req->post('title'),
-                'criteria' => $req->post('criteria')
+                'criteria' => $req->post('criteria'),
+                'zone_code' => $zoneCode
             ];
             
             Log::info('🔵 Sending vendor notification', [
@@ -1538,6 +1571,11 @@ class AdminController extends Controller
     private function renderSubscriptionPackagesPage(?string $forcedUserType = null)
     {
         $isMarketplaceContext = strtoupper((string) $forcedUserType) === 'M';
+        $isZoneUser = $this->getLoggedInZoneCode() !== null;
+        $effectiveForcedUserType = $forcedUserType;
+        if (!$isMarketplaceContext && $isZoneUser) {
+            $effectiveForcedUserType = 'b2c';
+        }
         $routeName = $isMarketplaceContext ? 'marketplaceSubscriptionPackages' : 'subscriptionPackages';
         $basePath = $isMarketplaceContext ? '/marketplaceSubscriptionPackages' : '/subscriptionPackages';
         $pageName = $isMarketplaceContext ? 'Market Place Accounts - Manage Packages' : 'Subscription Packages';
@@ -1569,6 +1607,10 @@ class AdminController extends Controller
                     $packages = array_values(array_filter($packages, function ($package) {
                         return strtoupper((string) ($package['userType'] ?? '')) === 'M';
                     }));
+                } elseif ($isZoneUser) {
+                    $packages = array_values(array_filter($packages, function ($package) {
+                        return strtolower((string) ($package['userType'] ?? '')) === 'b2c';
+                    }));
                 }
                 
                 // Display packages from DynamoDB
@@ -1577,7 +1619,7 @@ class AdminController extends Controller
                     'packages' => $packages,
                     'routeName' => $routeName,
                     'packagesBasePath' => $basePath,
-                    'forceUserType' => $forcedUserType,
+                    'forceUserType' => $effectiveForcedUserType,
                 ]);
             }
             
@@ -1592,7 +1634,7 @@ class AdminController extends Controller
                 'error' => isset($apiResponse['message']) ? $apiResponse['message'] : 'No packages found. Please run the seed script to create default packages.',
                 'routeName' => $routeName,
                 'packagesBasePath' => $basePath,
-                'forceUserType' => $forcedUserType,
+                'forceUserType' => $effectiveForcedUserType,
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching subscription packages: ' . $e->getMessage(), [
@@ -1604,7 +1646,7 @@ class AdminController extends Controller
                 'error' => 'Failed to load subscription packages: ' . $e->getMessage(),
                 'routeName' => $routeName,
                 'packagesBasePath' => $basePath,
-                'forceUserType' => $forcedUserType,
+                'forceUserType' => $effectiveForcedUserType,
             ]);
         }
     }
@@ -1631,6 +1673,7 @@ class AdminController extends Controller
     private function handleSubscriptionPackageUpdate(Request $request, $id, ?string $forcedUserType = null)
     {
         $isMarketplaceContext = strtoupper((string) $forcedUserType) === 'M';
+        $isZoneUser = $this->getLoggedInZoneCode() !== null;
         $redirectRoute = $isMarketplaceContext ? 'marketplaceSubscriptionPackages' : 'subscriptionPackages';
         $subjectLabel = $isMarketplaceContext ? 'Marketplace subscription package' : 'Subscription package';
 
@@ -1677,6 +1720,18 @@ class AdminController extends Controller
 
             if ($isMarketplaceContext) {
                 $data['userType'] = 'M';
+            } elseif ($isZoneUser) {
+                $data['userType'] = 'b2c';
+            }
+
+            // Zone users can edit package details, but must not alter UPI/Merchant on existing plans.
+            if ($isZoneUser && !($id === 'new' || empty($id))) {
+                $existingResponse = $this->nodeApi->get("/subscription-packages/{$id}");
+                if (($existingResponse['status'] ?? 'error') === 'success' && isset($existingResponse['data'])) {
+                    $existingPackage = $existingResponse['data'];
+                    $data['upiId'] = $existingPackage['upiId'] ?? ($data['upiId'] ?? null);
+                    $data['merchantName'] = $existingPackage['merchantName'] ?? ($data['merchantName'] ?? null);
+                }
             }
             
             // Convert features string to array if needed

@@ -72,7 +72,13 @@ $(document).ready(function() {
         processing: true,
         serverSide: true,
         destroy: true,
-        ajax: "{{ route('view_paidSubscriptions') }}",
+        ajax: {
+            url: "{{ route('view_paidSubscriptions') }}",
+            data: function(d) {
+                d.refresh = 'true';
+                d._ = Date.now();
+            }
+        },
         columns: [
             {
                 data: 'DT_RowIndex',
@@ -198,4 +204,3 @@ function confirmReject() {
 }
 </script>
 @endsection
-

@@ -147,6 +147,11 @@ class LoginController extends Controller
                     'user_id' => $apiResponse['data']['user']['id'] ?? 'unknown',
                     'has_cookies' => !empty($responseCookies)
                 ]);
+
+                // Prevent session fixation: rotate session before storing authenticated data.
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+                $request->session()->regenerate();
                 
                 // Store user data in session
                 if (isset($apiResponse['data']['user'])) {
@@ -157,9 +162,6 @@ class LoginController extends Controller
                         'user_name' => $user['name'],
                         'user_type' => $user['user_type']
                     ]);
-                    
-                    // Explicitly save the session to ensure it persists
-                    session()->save();
                     
                     Log::info('✅ Session saved after login', [
                         'user_id' => $user['id'],
@@ -175,7 +177,6 @@ class LoginController extends Controller
                         'user_email' => $request['email'],
                         'user_type' => 'A' // Default to admin if not specified
                     ]);
-                    session()->save();
                     Log::info('✅ Session saved (fallback)', [
                         'user_email' => $request['email'],
                         'session_id' => session()->getId()
@@ -185,7 +186,6 @@ class LoginController extends Controller
                 // Store authentication token if provided
                 if (isset($apiResponse['data']['token'])) {
                     session(['api_token' => $apiResponse['data']['token']]);
-                    session()->save();
                     Log::info('API token stored in session');
                 }
                 
@@ -220,6 +220,9 @@ class LoginController extends Controller
                         Log::info('API cookies parsed and stored', ['cookie_count' => count($parsedCookies)]);
                     }
                 }
+
+                // Explicitly save once at end of successful login flow.
+                session()->save();
                 
                 $res['msg'] = 'success';
             } else {
@@ -227,12 +230,10 @@ class LoginController extends Controller
                     'method' => 'POST',
                     'url' => $loginUrl,
                     'status_code' => $statusCode,
-                    'response_body' => $response->body(),
-                    'response_json' => $apiResponse,
+                    'response_json' => $this->sanitizeLoginResponseForLog($apiResponse),
                     'email' => $request['email'],
-                    'node_url_used' => $nodeUrl,
+                    'node_url_used' => $this->nodeApi->getNodeBaseUrl(),
                     'api_key_used' => !empty($apiKey) ? substr($apiKey, 0, 10) . '...' : 'empty',
-                    'response_headers' => $response->headers()
                 ];
                 
                 Log::error('❌ Login API Error - Invalid Credentials or Failed Response', $errorDetails);
@@ -253,8 +254,8 @@ class LoginController extends Controller
                     $res['debug_details'] = [
                         'status_code' => $statusCode,
                         'url' => $loginUrl,
-                        'api_response' => $apiResponse,
-                        'node_url_used' => $nodeUrl
+                        'api_response' => $this->sanitizeLoginResponseForLog($apiResponse),
+                        'node_url_used' => $this->nodeApi->getNodeBaseUrl()
                     ];
                 }
             }
@@ -280,12 +281,44 @@ class LoginController extends Controller
         return $res;
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
-        // Clear session data
-        session()->forget(['user_id', 'user_email', 'user_name', 'user_type']);
-        session()->flush();
+        // Fully invalidate the session and rotate CSRF token.
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
         return redirect('/login');
+    }
+
+    /**
+     * Remove token/cookie style fields from login debug logs.
+     */
+    private function sanitizeLoginResponseForLog($payload)
+    {
+        if (!is_array($payload)) {
+            return $payload;
+        }
+
+        $masked = $payload;
+        $sensitiveKeys = ['token', 'access_token', 'refresh_token', 'authorization', 'cookie', 'set-cookie', 'api_cookies'];
+
+        $walk = function (&$item) use (&$walk, $sensitiveKeys) {
+            if (!is_array($item)) {
+                return;
+            }
+            foreach ($item as $key => &$value) {
+                $normalizedKey = strtolower((string) $key);
+                if (in_array($normalizedKey, $sensitiveKeys, true)) {
+                    $value = '***';
+                    continue;
+                }
+                if (is_array($value)) {
+                    $walk($value);
+                }
+            }
+        };
+
+        $walk($masked);
+        return $masked;
     }
     // public function updatepss($newPassword)
     // {

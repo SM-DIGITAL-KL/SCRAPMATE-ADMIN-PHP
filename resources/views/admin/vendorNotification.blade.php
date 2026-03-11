@@ -9,31 +9,46 @@
                     <div class="card-body pb-xl-4 pb-sm-3 pb-0">
                         <form action="{{ route('sendVendorNotification') }}" method="POST" enctype="multipart/form-data">
                             @csrf
+                            @php
+                                $lockedZone = $logged_in_zone ?? null;
+                            @endphp
                             <div class="form-group row">
                                 <div class="col-sm-2"></div>
-                                <label for="customer" class="col-sm-2 col-form-label">Select Criteria ( <span class="text-danger">Optional </span>)</label>
+                                <label for="zone_code" class="col-sm-2 col-form-label">Target Zone</label>
                                 <div class="col-sm-6">
-                                    <select class="select2" name="criteria" id="criteria">
-                                        <option value="">Select criteria</option>
-                                        <option value="1">Vendors with no shop images added ({{ $criteria_counts['1'] ?? 0 }})</option>
-                                        <option value="2">Vendors with no categories added ({{ $criteria_counts['2'] ?? 0 }})</option>
-                                        <option value="3">Vendors with no items added ({{ $criteria_counts['3'] ?? 0 }})</option>
-                                    </select>
+                                    @if($lockedZone)
+                                        <select class="form-control" id="zone_code" disabled>
+                                            <option value="{{ $lockedZone }}" selected>{{ $lockedZone }}</option>
+                                        </select>
+                                        <input type="hidden" name="zone_code" value="{{ $lockedZone }}">
+                                        <small class="text-primary">Zone is locked for your login.</small>
+                                    @else
+                                        <select class="form-control" name="zone_code" id="zone_code" required>
+                                            <option value="">Select Zone</option>
+                                            @for($i = 1; $i <= 48; $i++)
+                                                @php $z = 'Z' . str_pad((string) $i, 2, '0', STR_PAD_LEFT); @endphp
+                                                <option value="{{ $z }}">{{ $z }}</option>
+                                            @endfor
+                                        </select>
+                                        <small class="text-muted">Notification will be sent only to vendors in the selected zone.</small>
+                                    @endif
                                 </div>
                             </div><br>
 
-                            <div class="form-group row" id="shopdiv">
+                            <div class="form-group row">
                                 <div class="col-sm-2"></div>
-                                <label for="shop" class="col-sm-2 col-form-label">Select Vendor</label>
+                                <label for="message_template" class="col-sm-2 col-form-label">Templates</label>
                                 <div class="col-sm-6">
-                                    <select class="form-control select2" multiple onchange="getVendorIds(this)">
-                                        @foreach($shops as $sh)
-                                            <option value="{{ $sh->id }}">{{ $sh->name }}</option>
-                                        @endforeach
+                                    <select class="form-control" id="message_template">
+                                        <option value="">Select Template</option>
+                                        <option value="welcome_zone">Welcome Greeting (Sample 1)</option>
+                                        <option value="pickup_drive">Pickup Drive Greeting (Sample 2)</option>
+                                        <option value="zonal_franchise">Zonal Franchise Invite</option>
                                     </select>
-                                    <small class="text-primary">Total Vendor Count = {{$shops_count}}</small>
+                                    <small class="text-muted">Selecting a template fills title/message. You can edit before sending.</small>
                                 </div>
                             </div><br>
+
                             <div class="form-group row">
                                 <div class="col-sm-2"></div>
                                 <label for="title" class="col-sm-2 col-form-label">Notification Title</label>
@@ -66,21 +81,28 @@
 @endsection
 @section('contentjs')
 <script>
-    function getVendorIds(selectElement) {
-        var selectedIds = Array.from(selectElement.selectedOptions).map(option => option.value);
-        // alert(selectedIds);
-        $('#vendor_ids').val(selectedIds.join(','));
-    }
+    const templateMap = {
+        welcome_zone: {
+            title: 'Greetings from ScrapMate',
+            message: 'Hello Vendor Partner, welcome to ScrapMate zone services. Thank you for supporting clean recycling in your area.'
+        },
+        pickup_drive: {
+            title: 'Zone Pickup Drive Update',
+            message: 'Dear Vendor, today we are running a special pickup drive in your zone. Please stay online and accept nearby requests quickly.'
+        },
+        zonal_franchise: {
+            title: 'Zonal Franchise Operations',
+            message: 'We are now welcoming Zonal Franchise Operations. If you are interested in becoming a zonal franchise partner, please message us at 7356468251.'
+        }
+    };
 
     $(document).ready(function(){
-        $('#criteria').change(function(){
-            if($(this).val() !== ''){
-                $('#shopdiv').hide();
-            }else{
-                $('#shopdiv').show();
-            }
+        $('#message_template').change(function(){
+            const key = $(this).val();
+            if (!key || !templateMap[key]) return;
+            $('#title').val(templateMap[key].title);
+            $('#message').val(templateMap[key].message);
         });
     });
 </script>
 @endsection
-

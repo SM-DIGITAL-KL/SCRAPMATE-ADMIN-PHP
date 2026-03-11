@@ -2,6 +2,7 @@
 @section('content')
 @php
     $isMarketplaceContext = strtoupper((string) ($forceUserType ?? '')) === 'M';
+    $isB2COnlyContext = !$isMarketplaceContext && strtolower((string) ($forceUserType ?? '')) === 'b2c';
     $packagesBasePath = $packagesBasePath ?? '/subscriptionPackages';
     $pageTitle = $isMarketplaceContext ? 'Marketplace Subscription Packages List' : 'Subscription Packages List';
     $pageSubtitle = $isMarketplaceContext
@@ -24,9 +25,11 @@
                                 <h4 class="card-title mb-1">{{ $pageTitle }}</h4>
                                 <p class="text-muted mb-0">{{ $pageSubtitle }}</p>
                             </div>
+                            @if(!$isB2COnlyContext)
                             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPackageModal">
                                 <i class="fa fa-plus"></i> Add New Package
                             </button>
+                            @endif
                         </div>
                         <hr>
                         
@@ -209,6 +212,9 @@
                         @if($isMarketplaceContext)
                             <input type="hidden" name="userType" id="edit_userType" value="M">
                             <input type="text" class="form-control" value="M" disabled>
+                        @elseif($isB2COnlyContext)
+                            <input type="hidden" name="userType" id="edit_userType" value="b2c">
+                            <input type="text" class="form-control" value="B2C" disabled>
                         @else
                             <select class="form-select" name="userType" id="edit_userType" required>
                                 <option value="b2b">B2B</option>
@@ -231,11 +237,11 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">UPI ID <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" name="upiId" id="edit_upiId" placeholder="7736068251@pthdfc" required>
+                            <input type="text" class="form-control" name="upiId" id="edit_upiId" placeholder="7736068251@pthdfc" required {{ $isB2COnlyContext ? 'readonly' : '' }}>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Merchant Name <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" name="merchantName" id="edit_merchantName" placeholder="Scrapmate Partner" required>
+                            <input type="text" class="form-control" name="merchantName" id="edit_merchantName" placeholder="Scrapmate Partner" required {{ $isB2COnlyContext ? 'readonly' : '' }}>
                         </div>
                     </div>
                     
@@ -324,6 +330,9 @@
                         @if($isMarketplaceContext)
                             <input type="hidden" name="userType" id="add_userType" value="M">
                             <input type="text" class="form-control" value="M" disabled>
+                        @elseif($isB2COnlyContext)
+                            <input type="hidden" name="userType" id="add_userType" value="b2c">
+                            <input type="text" class="form-control" value="B2C" disabled>
                         @else
                             <select class="form-select" name="userType" id="add_userType" required>
                                 <option value="b2b">B2B</option>
@@ -457,7 +466,17 @@ function editPackage(packageId) {
     document.getElementById('edit_id').value = package.id;
     document.getElementById('edit_name').value = package.name || '';
     document.getElementById('edit_price').value = package.price || 0;
-    document.getElementById('edit_duration').value = package.duration || 'month';
+    const editDurationSelect = document.getElementById('edit_duration');
+    const packageDuration = package.duration || 'month';
+    // Support custom duration values (e.g. "6 months") so form validation does not block submit.
+    const hasDurationOption = Array.from(editDurationSelect.options).some(opt => opt.value === packageDuration);
+    if (!hasDurationOption && packageDuration) {
+        const customOption = document.createElement('option');
+        customOption.value = packageDuration;
+        customOption.text = packageDuration;
+        editDurationSelect.appendChild(customOption);
+    }
+    editDurationSelect.value = packageDuration;
     document.getElementById('edit_userType').value = package.userType || defaultUserType;
     document.getElementById('edit_description').value = package.description || '';
     document.getElementById('edit_features').value = Array.isArray(package.features) ? package.features.join('\n') : (package.features || '');
