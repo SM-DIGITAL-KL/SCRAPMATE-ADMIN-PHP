@@ -1,5 +1,9 @@
 @extends('index')
 @section('content')
+@php
+    $listTitle = $listTitle ?? 'B2B Users List';
+    $usersRoute = $usersRoute ?? route('b2bUsers');
+@endphp
 
 <div class="content-body ">
     <div class="container-fluid">
@@ -8,7 +12,7 @@
                 <div class="card">
                     <div class="card-body">
                         @include('layouts.flashmessage')
-                        <h4 class="card-title">B2B Users List</h4>
+                        <h4 class="card-title">{{ $listTitle }}</h4>
                         <hr>
                         <div class="card-body p-0">
                             <div class="table-responsive">
@@ -47,6 +51,11 @@
                                         </div>
                                     </div>
                                     <div>
+                                        @if(!empty($exportRoute))
+                                            <a href="{{ $exportRoute }}" class="btn btn-sm btn-success me-2">
+                                                <i class="fa fa-file-excel-o"></i> Export XLSX
+                                            </a>
+                                        @endif
                                         <label class="me-2">Search:</label>
                                         <input type="text" 
                                                class="form-control form-control-sm d-inline-block" 
@@ -258,7 +267,7 @@ function loadB2BUsers(page, limit, search, appVersion) {
     tbody.innerHTML = '<tr><td colspan="10" class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
     
     // Build URL
-    let url = "{{ route('b2bUsers') }}?page=" + page + "&limit=" + limit;
+    let url = "{{ $usersRoute }}?page=" + page + "&limit=" + limit;
     if (search && search.trim()) {
         url += "&search=" + encodeURIComponent(search.trim());
     }
@@ -423,4 +432,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endsection
-

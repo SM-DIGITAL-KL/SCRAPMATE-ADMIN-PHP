@@ -267,7 +267,7 @@
                                 @endif
                                 @if(request()->routeIs('tenders.v2'))
                                     <div class="col-md-2">
-                                        <button type="submit" class="btn btn-outline-primary w-100">Apply</button>
+                                        <button type="submit" name="sync" value="1" class="btn btn-outline-primary w-100">Apply</button>
                                     </div>
                                     <div class="col-md-2">
                                         <button type="submit" name="sync" value="1" class="btn btn-primary w-100">Apply and Continue</button>
@@ -550,6 +550,95 @@
                         @else
                             <div class="alert alert-info mb-0">
                                 No tenders found for selected state/sort.
+                            </div>
+                        @endif
+
+                        @if(request()->routeIs('tenders.v2'))
+                            <div class="card mt-3">
+                                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                                    <strong>Requested Tenders</strong>
+                                    <span class="badge bg-primary">{{ isset($tenderRequests) ? $tenderRequests->count() : 0 }}</span>
+                                </div>
+                                <div class="card-body p-0">
+                                    @if(isset($tenderRequests) && $tenderRequests->count() > 0)
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-sm mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>ID</th>
+                                                        <th>Requested State</th>
+                                                        <th>Status</th>
+                                                        <th>User</th>
+                                                        <th>Phone</th>
+                                                        <th>Note</th>
+                                                        <th>Requested At</th>
+                                                        <th>Token</th>
+                                                        <th>Page</th>
+                                                        <th>Apply</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($tenderRequests as $req)
+                                                        @php
+                                                            $reqId = trim((string) ($req['id'] ?? '-'));
+                                                            $reqState = trim((string) (($req['requested_state'] ?? '') ?: ($req['requested_state_normalized'] ?? '')));
+                                                            $reqStatus = strtolower(trim((string) ($req['status'] ?? 'pending')));
+                                                            $reqUser = trim((string) (($req['user_name'] ?? '') ?: ('User #' . (string) ($req['user_id'] ?? '-'))));
+                                                            $reqPhone = trim((string) ($req['user_phone'] ?? '-'));
+                                                            $reqNote = trim((string) ($req['note'] ?? '-'));
+                                                            $reqCreatedAt = trim((string) ($req['created_at'] ?? '-'));
+                                                            $canApply = $reqState !== '';
+                                                        @endphp
+                                                        <tr>
+                                                            <td>{{ $reqId !== '' ? $reqId : '-' }}</td>
+                                                            <td>{{ $reqState !== '' ? $reqState : '-' }}</td>
+                                                            <td><span class="badge bg-secondary">{{ $reqStatus !== '' ? strtoupper($reqStatus) : '-' }}</span></td>
+                                                            <td>{{ $reqUser !== '' ? $reqUser : '-' }}</td>
+                                                            <td>{{ $reqPhone !== '' ? $reqPhone : '-' }}</td>
+                                                            <td>{{ $reqNote !== '' ? $reqNote : '-' }}</td>
+                                                            <td>{{ $reqCreatedAt !== '' ? $reqCreatedAt : '-' }}</td>
+                                                            <td colspan="3">
+                                                                <form method="GET" action="{{ route('tenders.v2') }}" class="d-flex gap-2 align-items-center">
+                                                                    <input type="hidden" name="state" value="{{ $reqState }}">
+                                                                    <input type="hidden" name="request_id" value="{{ $reqId }}">
+                                                                    <input type="hidden" name="request_user_id" value="{{ (string) ($req['user_id'] ?? '') }}">
+                                                                    <input type="hidden" name="request_state" value="{{ $reqState }}">
+                                                                    <input
+                                                                        type="text"
+                                                                        name="bidassist_auth_token"
+                                                                        class="form-control form-control-sm"
+                                                                        style="min-width: 220px;"
+                                                                        value="{{ $bidassistAuthToken ?? '' }}"
+                                                                        placeholder="Paste BIDASSIST_AUTH_TOKEN"
+                                                                    >
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        name="scrape_page"
+                                                                        class="form-control form-control-sm"
+                                                                        style="max-width: 90px;"
+                                                                        value="0"
+                                                                    >
+                                                                    <button
+                                                                        type="submit"
+                                                                        name="sync"
+                                                                        value="1"
+                                                                        class="btn btn-sm btn-primary"
+                                                                        {{ $canApply ? '' : 'disabled' }}
+                                                                    >
+                                                                        Apply
+                                                                    </button>
+                                                                </form>
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    @else
+                                        <div class="p-3 text-muted">No tender requests found.</div>
+                                    @endif
+                                </div>
                             </div>
                         @endif
                     </div>

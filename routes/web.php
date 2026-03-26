@@ -67,6 +67,8 @@ Route::middleware(['authusers'])->group(function () {
 
     // B2B Users
     Route::get('/b2bUsers', [\App\Http\Controllers\AdminController::class, 'b2bUsers'])->name('b2bUsers');
+    Route::get('/marketplaceUsers', [\App\Http\Controllers\AdminController::class, 'marketplaceUsers'])->name('marketplaceUsers');
+    Route::get('/marketplaceUsers/export-excel', [\App\Http\Controllers\AdminController::class, 'exportMarketplaceUsersExcel'])->name('marketplaceUsers.exportExcel');
     Route::get('/b2bUserDocuments/{userId}', [\App\Http\Controllers\AdminController::class, 'viewB2BUserDocuments'])->name('b2bUserDocuments');
     Route::post('/b2bUsers/{userId}/approval-status', [\App\Http\Controllers\AdminController::class, 'updateB2BApprovalStatus'])->name('updateB2BApprovalStatus');
 
@@ -167,6 +169,7 @@ Route::middleware(['authusers'])->group(function () {
     Route::get('/marketplacePosts', [AccountsController::class, 'marketplacePosts'])->name('marketplacePosts.index');
     Route::get('/view_marketplacePosts', [AccountsController::class, 'viewMarketplacePosts'])->name('view_marketplacePosts');
     Route::post('/marketplacePostReview', [AccountsController::class, 'marketplacePostReview'])->name('marketplacePostReview');
+    Route::post('/marketplacePostDelete', [AccountsController::class, 'marketplacePostDelete'])->name('marketplacePostDelete');
 
     // Live Scrap Prices (No Database)
     Route::get('/liveprices', [LivePricesController::class, 'index'])->name('liveprices.index');

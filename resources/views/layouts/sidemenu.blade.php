@@ -79,6 +79,7 @@
                 @endif
                 @if(!$is_zone_email)
                 <li><a href="{{ route('b2bUsers') }}">B2B Manage</a></li>
+                <li><a href="{{ route('marketplaceUsers') }}">Marketplace User Manage</a></li>
                 @endif
                 <li><a href="{{ route('b2cUsers') }}">B2C Manage</a></li>
                 @if(!$is_zone_email)

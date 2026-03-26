@@ -534,7 +534,7 @@ class AccountsController extends Controller
         Log::info('🔵 AccountsController::viewMarketplacePosts called');
 
         $sellResponse = $this->nodeApi->get('/accounts/pending-bulk-sell-orders');
-        $buyResponse = $this->nodeApi->get('/accounts/pending-bulk-buy-orders');
+        $buyResponse = $this->nodeApi->get('/accounts/marketplace-bulk-buy-posts');
 
         $sellOrders = ($sellResponse['status'] === 'success' && isset($sellResponse['data']) && is_array($sellResponse['data']))
             ? collect($sellResponse['data'])
@@ -580,8 +580,8 @@ class AccountsController extends Controller
             })
             ->addColumn('user_details', function ($d) {
                 $name = $d->seller_name ?? $d->shopname ?? $d->username ?? $d->user_name ?? $d->name ?? 'N/A';
-                $phone = $d->phone ?? $d->contact ?? 'N/A';
-                $userId = $d->user_id ?? $d->seller_id ?? 'N/A';
+                $phone = $d->phone ?? $d->user_phone ?? $d->mob_num ?? $d->contact ?? 'N/A';
+                $userId = $d->user_id ?? $d->seller_id ?? $d->buyer_id ?? 'N/A';
 
                 return '<strong>' . e($name) . '</strong><br>' .
                     '<small>User ID: ' . e((string) $userId) . '</small><br>' .
@@ -621,9 +621,10 @@ class AccountsController extends Controller
                     '<strong>Available:</strong> ' . e((string) $available);
             })
             ->addColumn('media_details', function ($d) {
-                $images = $this->safeArray($d->uploaded_images ?? ($d->images ?? []));
-                $videos = $this->safeArray($d->videos ?? ($d->video_urls ?? ($d->uploaded_videos ?? [])));
-                $documents = $this->safeArray($d->documents ?? []);
+                $classified = $this->classifyPostMediaUrls($this->collectPostMediaUrls($d));
+                $images = $classified['images'];
+                $videos = $classified['videos'];
+                $documents = $classified['documents'];
 
                 $imageCount = count($images);
                 $videoCount = count($videos);
@@ -690,7 +691,10 @@ class AccountsController extends Controller
             ->addColumn('action', function ($d) {
                 $json = json_encode($d);
                 $payload = base64_encode($json ?: '{}');
-                return '<button class="btn btn-primary btn-sm" onclick="viewMarketplacePostDetails(\'' . $payload . '\')">View Details</button>';
+                $postType = e((string) ($d->post_type ?? ''));
+                $postId = e((string) ($d->id ?? ''));
+                return '<button class="btn btn-primary btn-sm mr-1" onclick="viewMarketplacePostDetails(\'' . $payload . '\')">View Details</button>' .
+                    '<button class="btn btn-danger btn-sm" onclick="deleteMarketplacePost(\'' . $postType . '\', \'' . $postId . '\')">Delete</button>';
             })
             ->rawColumns([
                 'post_type_badge',
@@ -720,14 +724,140 @@ class AccountsController extends Controller
         return [];
     }
 
+    private function parseJsonObject($value)
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && trim($value) !== '') {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return [];
+    }
+
+    private function normalizeUrlList($value)
+    {
+        $urls = [];
+        $items = $this->safeArray($value);
+        foreach ($items as $item) {
+            if (is_string($item)) {
+                $url = trim($item);
+                if ($url !== '') {
+                    $urls[] = $url;
+                }
+                continue;
+            }
+
+            if (is_array($item)) {
+                $url = $item['s3Url'] ?? $item['url'] ?? $item['uri'] ?? $item['file_url'] ?? null;
+                if (is_string($url) && trim($url) !== '') {
+                    $urls[] = trim($url);
+                }
+            }
+        }
+        return $urls;
+    }
+
+    private function collectPostMediaUrls($post)
+    {
+        $urls = [];
+
+        $fieldCandidates = [
+            $post->uploaded_images ?? [],
+            $post->images ?? [],
+            $post->videos ?? [],
+            $post->video_urls ?? [],
+            $post->uploaded_videos ?? [],
+            $post->documents ?? [],
+            $post->uploaded_documents ?? [],
+            $post->media ?? [],
+            $post->media_urls ?? [],
+            $post->mediaUrls ?? [],
+        ];
+
+        foreach ($fieldCandidates as $candidate) {
+            $urls = array_merge($urls, $this->normalizeUrlList($candidate));
+        }
+
+        $notes = $this->parseJsonObject($post->additional_notes ?? null);
+        if (!empty($notes)) {
+            $noteCandidates = [
+                $notes['mediaUrls'] ?? [],
+                $notes['media_urls'] ?? [],
+                $notes['documents'] ?? [],
+                $notes['uploaded_images'] ?? [],
+                $notes['uploaded_videos'] ?? [],
+                $notes['videos'] ?? [],
+                $notes['images'] ?? [],
+                $notes['attachments'] ?? [],
+                $notes['files'] ?? [],
+            ];
+
+            foreach ($noteCandidates as $candidate) {
+                $urls = array_merge($urls, $this->normalizeUrlList($candidate));
+            }
+        }
+
+        $urls = array_values(array_unique(array_filter($urls, function ($u) {
+            return is_string($u) && trim($u) !== '';
+        })));
+
+        return $urls;
+    }
+
+    private function classifyPostMediaUrls(array $urls)
+    {
+        $images = [];
+        $videos = [];
+        $documents = [];
+
+        foreach ($urls as $url) {
+            $path = strtolower((string) parse_url((string) $url, PHP_URL_PATH));
+            $ext = pathinfo($path, PATHINFO_EXTENSION);
+
+            if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif', 'avif'], true)) {
+                $images[] = $url;
+                continue;
+            }
+
+            if (in_array($ext, ['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv', '3gp'], true)) {
+                $videos[] = $url;
+                continue;
+            }
+
+            $documents[] = $url;
+        }
+
+        return [
+            'images' => $images,
+            'videos' => $videos,
+            'documents' => $documents,
+        ];
+    }
+
     private function isMarketplaceUserType(array $item)
     {
+        $marketplaceCandidate = $item['marketplace_user_type']
+            ?? $item['seller_marketplace_user_type']
+            ?? $item['buyer_marketplace_user_type']
+            ?? null;
+
+        if (is_string($marketplaceCandidate) && strtoupper(trim($marketplaceCandidate)) === 'M') {
+            return true;
+        }
+
         $candidate = $item['user_type'] ?? $item['seller_user_type'] ?? $item['buyer_user_type'] ?? $item['type'] ?? null;
         if (!is_string($candidate) || trim($candidate) === '') {
             // Fallback for old API payloads not including user_type yet.
             return true;
         }
-        return strtoupper(trim($candidate)) === 'M';
+        $normalized = strtoupper(trim($candidate));
+        return in_array($normalized, ['M', 'N'], true);
     }
 
     public function marketplacePostReview(Request $request)
@@ -753,6 +883,36 @@ class AccountsController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $apiResponse['msg'] ?? 'Failed to update review status'
+            ], 400);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function marketplacePostDelete(Request $request)
+    {
+        try {
+            $apiData = [
+                'post_id' => $request->post_id,
+                'post_type' => $request->post_type,
+            ];
+
+            $apiResponse = $this->nodeApi->post('/accounts/marketplace-post-delete', $apiData);
+
+            if (($apiResponse['status'] ?? 'error') === 'success') {
+                return response()->json([
+                    'success' => true,
+                    'message' => $apiResponse['msg'] ?? 'Marketplace post deleted successfully',
+                    'data' => $apiResponse['data'] ?? null
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $apiResponse['msg'] ?? 'Failed to delete marketplace post'
             ], 400);
         } catch (\Exception $e) {
             return response()->json([

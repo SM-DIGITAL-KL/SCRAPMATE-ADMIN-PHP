@@ -30,11 +30,15 @@ class TenderController extends Controller
         $bidassistAuthToken = trim((string) $request->query('bidassist_auth_token', ''));
         $v2ScrapePage = max(0, (int) $request->query('scrape_page', 0));
         $v2SyncRequested = $isTenderV2 && trim((string) $request->query('sync', '')) === '1';
+        $appliedRequestId = trim((string) $request->query('request_id', ''));
+        $appliedRequestUserId = (int) $request->query('request_user_id', 0);
+        $appliedRequestState = trim((string) $request->query('request_state', ''));
         $sortBy = trim((string) $request->query('sort', 'state_asc'));
         $page = max((int) $request->query('page', 1), 1);
         $cached = collect(Cache::get('tenders_data', []));
         $lastRefresh = Cache::get('tenders_last_refresh');
         $tenders = $cached;
+        $tenderRequests = collect([]);
         $parseMode = $cached->isEmpty() ? '-' : 'cache';
         $saveError = null;
         $savedTenders = 0;
@@ -57,6 +61,22 @@ class TenderController extends Controller
         } catch (\Throwable $e) {
             $saveError = 'Failed to load from Node API: ' . $e->getMessage();
             Log::warning('Tender index API fetch failed', ['error' => $e->getMessage()]);
+        }
+
+        if ($isTenderV2) {
+            try {
+                $tenderRequestsQuery = [];
+                $tenderRequestsResponse = $this->nodeApi->get('/accounts/tender-requests', $tenderRequestsQuery, 60);
+                if (($tenderRequestsResponse['status'] ?? 'error') === 'success' && is_array($tenderRequestsResponse['data']['requests'] ?? null)) {
+                    $tenderRequests = collect($tenderRequestsResponse['data']['requests'])
+                        ->sortByDesc(function ($row) {
+                            return strtotime((string) ($row['created_at'] ?? '')) ?: 0;
+                        })
+                        ->values();
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Tender V2 request list fetch failed', ['error' => $e->getMessage()]);
+            }
         }
 
         $perPage = $isTenderV2 ? 10 : (int) $request->query('per_page', 5);
@@ -99,6 +119,28 @@ class TenderController extends Controller
                         }
                     } catch (\Throwable $inner) {
                         Log::warning('Tender V2 reload from DB failed', ['error' => $inner->getMessage()]);
+                    }
+
+                    // If this sync came from a requested tender row, remove that request and notify the requester.
+                    if (
+                        $v2SyncRequested &&
+                        $saveError === null &&
+                        $appliedRequestId !== '' &&
+                        $appliedRequestUserId > 0
+                    ) {
+                        try {
+                            $this->nodeApi->post('/accounts/tender-requests/fulfill', [
+                                'request_id' => $appliedRequestId,
+                                'user_id' => $appliedRequestUserId,
+                                'requested_state' => $appliedRequestState !== '' ? $appliedRequestState : $selectedState,
+                            ], 60);
+                        } catch (\Throwable $fulfillError) {
+                            Log::warning('Tender V2 request fulfill call failed', [
+                                'request_id' => $appliedRequestId,
+                                'user_id' => $appliedRequestUserId,
+                                'error' => $fulfillError->getMessage(),
+                            ]);
+                        }
                     }
                 } else {
                     // Pull enough items for current pagination view (up to 6 pages from source).
@@ -200,6 +242,7 @@ class TenderController extends Controller
             'bidassistAuthToken' => $bidassistAuthToken,
             'sortBy' => $sortBy,
             'perPage' => $perPage,
+            'tenderRequests' => $tenderRequests,
             'sourceUrl' => $this->defaultBidAssistUrl(),
             'rawContent' => '',
             'meta' => [

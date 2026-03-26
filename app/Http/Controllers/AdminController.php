@@ -279,6 +279,206 @@ class AdminController extends Controller
         }
     }
 
+    /**
+     * Marketplace users list (user_type = 'M') in Vendor Manage.
+     * Reuses B2B list UI and applies local filtering on user_type.
+     */
+    public function marketplaceUsers(Request $request)
+    {
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 10);
+        $search = $request->get('search', '');
+        $appVersion = $request->get('app_version', '');
+
+        $params = [
+            'page' => $page,
+            'limit' => $limit,
+        ];
+        if (!empty($search)) {
+            $params['search'] = $search;
+        }
+        if (!empty($appVersion)) {
+            $params['app_version'] = $appVersion;
+        }
+
+        $apiResponse = $this->nodeApi->get('/admin/marketplace-users', $params);
+
+        if ($apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+            $data = $apiResponse['data'];
+            if (isset($data['users']) && is_array($data['users'])) {
+                $data['users'] = collect($data['users'])->map(function ($user) {
+                    return (object) $user;
+                });
+            } else {
+                $data['users'] = collect([]);
+            }
+
+            $data['pagename'] = 'Marketplace Users';
+            $data['listTitle'] = 'Marketplace Users List';
+            $data['usersRoute'] = route('marketplaceUsers');
+            $data['exportRoute'] = route('marketplaceUsers.exportExcel');
+            return view('admin/b2bUsers', $data);
+        }
+
+        Log::error('Node API failed for marketplaceUsers', ['response' => $apiResponse]);
+        $data = [
+            'pagename' => 'Marketplace Users',
+            'users' => collect([]),
+            'total' => 0,
+            'page' => 1,
+            'limit' => 10,
+            'totalPages' => 0,
+            'hasMore' => false,
+            'listTitle' => 'Marketplace Users List',
+            'usersRoute' => route('marketplaceUsers'),
+            'exportRoute' => route('marketplaceUsers.exportExcel'),
+        ];
+        return view('admin/b2bUsers', $data);
+    }
+
+    public function exportMarketplaceUsersExcel(Request $request)
+    {
+        try {
+            // Export all marketplace users (no filters applied)
+            $params = [
+                'page' => 1,
+                'limit' => 999999
+            ];
+
+            $apiResponse = $this->nodeApi->get('/admin/marketplace-users', $params);
+
+            if ($apiResponse['status'] !== 'success' || !isset($apiResponse['data']['users'])) {
+                Log::error('Node API failed for exportMarketplaceUsersExcel', ['response' => $apiResponse]);
+                return redirect()->route('marketplaceUsers')->with('error', 'Failed to fetch data for export');
+            }
+
+            $users = $apiResponse['data']['users'];
+
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+
+            $headers = ['SL NO', 'VENDOR NAME', 'EMAIL', 'CONTACT NO', 'ADDRESS', 'SIGN UP DATE', 'APP TYPE', 'STATUS', 'APPROVAL STATUS'];
+            $sheet->fromArray($headers, null, 'A1');
+
+            $headerStyle = [
+                'font' => [
+                    'bold' => true,
+                    'color' => ['rgb' => 'FFFFFF'],
+                ],
+                'fill' => [
+                    'fillType' => Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '6C5CE7'],
+                ],
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                ],
+            ];
+            $sheet->getStyle('A1:I1')->applyFromArray($headerStyle);
+
+            $sheet->getColumnDimension('A')->setWidth(10);
+            $sheet->getColumnDimension('B')->setWidth(25);
+            $sheet->getColumnDimension('C')->setWidth(30);
+            $sheet->getColumnDimension('D')->setWidth(15);
+            $sheet->getColumnDimension('E')->setWidth(50);
+            $sheet->getColumnDimension('F')->setWidth(15);
+            $sheet->getColumnDimension('G')->setWidth(12);
+            $sheet->getColumnDimension('H')->setWidth(15);
+            $sheet->getColumnDimension('I')->setWidth(18);
+
+            $row = 2;
+            $slNo = 1;
+            foreach ($users as $user) {
+                $userObj = (object) $user;
+
+                $shop = null;
+                if (isset($userObj->shop)) {
+                    $shop = is_array($userObj->shop) ? (object) $userObj->shop : $userObj->shop;
+                }
+
+                $contact = $userObj->contact ?? ($shop->contact ?? $userObj->mob_num ?? 'N/A');
+                $address = $userObj->address ?? ($shop->address ?? 'N/A');
+
+                $signUpDate = 'N/A';
+                if (!empty($userObj->created_at)) {
+                    try {
+                        $signUpDate = \Carbon\Carbon::parse($userObj->created_at)->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        $signUpDate = 'N/A';
+                    }
+                }
+
+                $appVersionValue = $userObj->app_version ?? 'v1';
+                $appType = $appVersionValue === 'v2' ? 'V2' : 'V1';
+
+                $approvalStatusValue = $userObj->approval_status ?? ($shop->approval_status ?? null);
+                if ($appVersionValue === 'v2') {
+                    $status = $approvalStatusValue ?? 'pending';
+                    if ($status === 'approved') {
+                        $statusLabel = 'Approved';
+                    } elseif ($status === 'rejected') {
+                        $statusLabel = 'Rejected';
+                    } else {
+                        $statusLabel = 'Pending';
+                    }
+                } else {
+                    $statusLabel = (isset($userObj->del_status) && $userObj->del_status == 1) ? 'Active' : 'Inactive';
+                }
+
+                if ($approvalStatusValue === 'approved') {
+                    $approvalStatusLabel = 'Approved';
+                } elseif ($approvalStatusValue === 'pending') {
+                    $approvalStatusLabel = 'Pending';
+                } elseif ($approvalStatusValue === 'rejected') {
+                    $approvalStatusLabel = 'Rejected';
+                } else {
+                    $approvalStatusLabel = 'N/A';
+                }
+
+                $sheet->setCellValue('A' . $row, $slNo);
+                $sheet->setCellValue('B' . $row, $userObj->name ?? 'N/A');
+                $sheet->setCellValue('C' . $row, $userObj->email ?? 'N/A');
+                $sheet->setCellValue('D' . $row, $contact);
+                $sheet->setCellValue('E' . $row, $address);
+                $sheet->setCellValue('F' . $row, $signUpDate);
+                $sheet->setCellValue('G' . $row, $appType);
+                $sheet->setCellValue('H' . $row, $statusLabel);
+                $sheet->setCellValue('I' . $row, $approvalStatusLabel);
+
+                $sheet->getStyle('E' . $row)->getAlignment()->setWrapText(true);
+
+                $row++;
+                $slNo++;
+            }
+
+            $lastRow = $row - 1;
+            $styleArray = [
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color' => ['rgb' => 'CCCCCC'],
+                    ],
+                ],
+            ];
+            $sheet->getStyle('A1:I' . $lastRow)->applyFromArray($styleArray);
+
+            $filename = 'marketplace_users_all_' . date('Y-m-d_His') . '.xlsx';
+            $writer = new Xlsx($spreadsheet);
+            $tempFile = tempnam(sys_get_temp_dir(), 'marketplace_users_');
+            $writer->save($tempFile);
+
+            return response()->download($tempFile, $filename, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ])->deleteFileAfterSend(true);
+        } catch (\Exception $e) {
+            Log::error('Error exporting marketplace users to Excel', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->route('marketplaceUsers')->with('error', 'Failed to export data: ' . $e->getMessage());
+        }
+    }
+
     public function b2cUsers(Request $request)
     {
         // Reduced logging for performance

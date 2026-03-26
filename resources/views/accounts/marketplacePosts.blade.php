@@ -227,20 +227,64 @@ function inr(value) {
     return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+function normalizeUrlList(value) {
+    const out = [];
+    const list = Array.isArray(value) ? value : safeJsonParse(value, []);
+    if (!Array.isArray(list)) return out;
+    list.forEach((item) => {
+        if (typeof item === 'string') {
+            const url = item.trim();
+            if (/^https?:\/\//i.test(url)) out.push(url);
+            return;
+        }
+        if (item && typeof item === 'object') {
+            const url = item.s3Url || item.url || item.uri || item.file_url || null;
+            if (typeof url === 'string' && /^https?:\/\//i.test(url.trim())) {
+                out.push(url.trim());
+            }
+        }
+    });
+    return out;
+}
+
 function mediaFromPost(post) {
-    const isUrl = (v) => typeof v === 'string' && /^https?:\/\//i.test(v);
-    const documents = Array.isArray(post.documents) ? post.documents : [];
-    const uploadedImages = Array.isArray(post.uploaded_images) ? post.uploaded_images : [];
+    const additional = safeJsonParse(post.additional_notes, {});
+    const allUrls = [];
+    const pushAll = (candidate) => allUrls.push(...normalizeUrlList(candidate));
+
+    pushAll(post.uploaded_images);
+    pushAll(post.images);
+    pushAll(post.videos);
+    pushAll(post.video_urls);
+    pushAll(post.uploaded_videos);
+    pushAll(post.documents);
+    pushAll(post.uploaded_documents);
+    pushAll(post.media);
+    pushAll(post.media_urls);
+    pushAll(post.mediaUrls);
+    pushAll(additional.mediaUrls);
+    pushAll(additional.media_urls);
+    pushAll(additional.documents);
+    pushAll(additional.uploaded_images);
+    pushAll(additional.uploaded_videos);
+    pushAll(additional.videos);
+    pushAll(additional.images);
+    pushAll(additional.attachments);
+    pushAll(additional.files);
+
+    const unique = Array.from(new Set(allUrls.filter(Boolean)));
     const images = [];
     const videos = [];
+    const documents = [];
 
-    [...uploadedImages, ...documents].forEach((url) => {
-        if (!isUrl(url)) return;
-        const lower = url.toLowerCase();
-        if (lower.match(/\.(mp4|mov|m4v|webm)(\?|$)/)) {
+    unique.forEach((url) => {
+        const lower = String(url).toLowerCase();
+        if (lower.match(/\.(mp4|mov|m4v|webm|avi|mkv|3gp)(\?|$)/)) {
             videos.push(url);
-        } else if (lower.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/)) {
+        } else if (lower.match(/\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)(\?|$)/)) {
             images.push(url);
+        } else {
+            documents.push(url);
         }
     });
 
@@ -340,6 +384,40 @@ function renderShopDocs(post) {
     return `<ul class="mb-0">${rows.join('')}</ul>`;
 }
 
+function renderPostOwnerDocs(post, additional) {
+    const docs = [];
+    const identityDocMap = (additional && typeof additional.identityDocMap === 'object' && additional.identityDocMap) ? additional.identityDocMap : {};
+    const identityDocs = Array.isArray(additional && additional.identityDocs) ? additional.identityDocs : [];
+
+    const mapped = [
+        { key: 'aadhar-card', label: 'Aadhar Card' },
+        { key: 'business-license', label: 'Business License' },
+        { key: 'gst-certificate', label: 'GST Certificate' },
+        { key: 'address-proof', label: 'Address Proof' },
+        { key: 'bulk-history', label: 'Bulk History' },
+    ];
+
+    mapped.forEach((entry) => {
+        const url = identityDocMap[entry.key];
+        if (typeof url === 'string' && /^https?:\/\//i.test(url.trim())) {
+            docs.push({ label: entry.label, url: url.trim() });
+        }
+    });
+
+    identityDocs.forEach((url, idx) => {
+        if (typeof url === 'string' && /^https?:\/\//i.test(url.trim())) {
+            docs.push({ label: `Identity Doc ${idx + 1}`, url: url.trim() });
+        }
+    });
+
+    if (docs.length === 0) {
+        return '<div class="text-muted">No post-level identity documents uploaded</div>';
+    }
+
+    const rows = docs.map((doc) => `<li><a href="${esc(doc.url)}" target="_blank">${esc(doc.label)}</a></li>`);
+    return `<ul class="mb-0">${rows.join('')}</ul>`;
+}
+
 function renderProfile(post) {
     const profileImage = post.user_profile_image || null;
     const email = post.user_email || 'N/A';
@@ -369,14 +447,14 @@ function renderPostDetails(post) {
     const price = post.asking_price ?? post.preferred_price ?? post.price ?? null;
     const total = post.order_value ?? ((post.quantity && price) ? (Number(post.quantity) * Number(price)) : null);
     const sellerName = post.seller_name || post.shopname || post.username || 'N/A';
-    const sellerId = post.seller_id || post.user_id || 'N/A';
+    const sellerId = post.seller_id || post.user_id || post.buyer_id || 'N/A';
     const userPhone = post.user_phone || post.phone || post.contact || 'N/A';
     const status = post.status || 'N/A';
     const paymentStatus = post.payment_status || 'N/A';
     const location = post.location || 'N/A';
     const distance = post.preferred_distance ? `${post.preferred_distance} km` : 'N/A';
     const whenAvailable = post.when_available || 'N/A';
-    const { images, videos } = mediaFromPost(post);
+    const { images, videos, documents } = mediaFromPost(post);
     const subcategoriesHtml = renderSubcategoriesTable(post.subcategories, additional.subcategories);
     const mediaHtml = renderMediaGrid(images, videos);
 
@@ -443,12 +521,15 @@ function renderPostDetails(post) {
             <div class="card-header py-2"><strong>User Uploaded Documents</strong></div>
             <div class="card-body py-2">
                 ${renderShopDocs(post)}
+                <hr class="my-2">
+                ${renderPostOwnerDocs(post, additional)}
             </div>
         </div>
 
         <div class="card mb-0">
             <div class="card-header py-2"><strong>Uploaded Media</strong></div>
             <div class="card-body py-2">
+                <div class="mb-2"><strong>Images:</strong> ${images.length} | <strong>Videos:</strong> ${videos.length} | <strong>Docs:</strong> ${documents.length}</div>
                 ${mediaHtml}
             </div>
         </div>
@@ -517,6 +598,45 @@ function submitModalReview(action) {
         }
     }
     updateMarketplacePostReview(postType, postId, action, reason);
+}
+
+function deleteMarketplacePost(postType, postId) {
+    if (!postType || !postId) {
+        notifyError('Unable to delete: post details missing');
+        return;
+    }
+
+    const confirmed = window.confirm('Are you sure you want to delete this marketplace post? This cannot be undone.');
+    if (!confirmed) return;
+
+    $.ajax({
+        url: "{{ route('marketplacePostDelete') }}",
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        data: {
+            post_type: postType,
+            post_id: postId,
+            _token: '{{ csrf_token() }}'
+        },
+        success: function(response) {
+            if (response.success) {
+                notifySuccess(response.message || 'Marketplace post deleted successfully');
+                $('#marketplacePostsTable').DataTable().ajax.reload(null, false);
+            } else {
+                notifyError(response.message || 'Failed to delete marketplace post');
+            }
+        },
+        error: function(xhr) {
+            const errorMsg = xhr.responseJSON?.message || xhr.responseJSON?.msg || 'Failed to delete marketplace post';
+            console.error('Marketplace post delete failed:', {
+                status: xhr.status,
+                response: xhr.responseText
+            });
+            notifyError(errorMsg);
+        }
+    });
 }
 
 function notifySuccess(msg) {
