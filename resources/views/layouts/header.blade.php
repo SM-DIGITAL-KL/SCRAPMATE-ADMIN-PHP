@@ -14,6 +14,27 @@
         </div>
     </div>
 </div>
+<script>
+    // Avoid the intentional 1s preloader delay on every page navigation.
+    (function () {
+        function removePreloaderImmediately() {
+            var preloader = document.getElementById('preloader');
+            if (preloader) {
+                preloader.remove();
+            }
+            var mainWrapper = document.getElementById('main-wrapper');
+            if (mainWrapper) {
+                mainWrapper.classList.add('show');
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', removePreloaderImmediately);
+        } else {
+            removePreloaderImmediately();
+        }
+    })();
+</script>
 <!--*******************
         Preloader end
     ********************-->

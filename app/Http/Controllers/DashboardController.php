@@ -239,10 +239,164 @@ class DashboardController extends Controller
             $apiResponse = $this->nodeApi->get('/admin/dashboard/order/' . $id . '/notified-vendors', [], 60);
             
             if (isset($apiResponse['status']) && $apiResponse['status'] === 'success' && isset($apiResponse['data'])) {
+                $orderData = $apiResponse['data'];
+
+                // Fallback enrichment: when accepted order has shop_id but accepted_vendor details are partial/missing,
+                // fetch shop + vendor user details directly so UI won't show "N/A" fields.
+                $shopId = $orderData['shop_id'] ?? null;
+                $acceptedVendor = $orderData['accepted_vendor'] ?? null;
+                $acceptedShopName = is_array($acceptedVendor) ? ($acceptedVendor['shop_name'] ?? null) : null;
+                $acceptedUserId = is_array($acceptedVendor) ? ($acceptedVendor['user_id'] ?? null) : null;
+                $acceptedUserName = is_array($acceptedVendor) ? ($acceptedVendor['user_name'] ?? null) : null;
+                $isBlankOrNa = static function ($value) {
+                    return $value === null || $value === '' || $value === 'N/A';
+                };
+                $needsShopFallback = !empty($shopId) && (
+                    !is_array($acceptedVendor) ||
+                    $isBlankOrNa($acceptedShopName) ||
+                    $isBlankOrNa($acceptedUserId) ||
+                    $isBlankOrNa($acceptedUserName)
+                );
+
+                if ($needsShopFallback) {
+                    try {
+                        $shopResponse = $this->nodeApi->get('/agent/shop/' . $shopId, [], 30);
+                        if (
+                            isset($shopResponse['status']) &&
+                            $shopResponse['status'] === 'success' &&
+                            isset($shopResponse['data']['shop']) &&
+                            is_array($shopResponse['data']['shop'])
+                        ) {
+                            $shop = $shopResponse['data']['shop'];
+                            $shopName = $shop['shopname'] ?? ($shop['shop_name'] ?? ($shop['name'] ?? 'N/A'));
+                            $vendorUserId = $shop['user_id'] ?? null;
+                            $vendorUser = null;
+
+                            if (!empty($vendorUserId)) {
+                                try {
+                                    $userResponse = $this->nodeApi->get('/get_user_by_id/' . $vendorUserId . '/users', [], 30);
+                                    if (
+                                        isset($userResponse['status']) &&
+                                        $userResponse['status'] === 'success' &&
+                                        isset($userResponse['data']) &&
+                                        is_array($userResponse['data'])
+                                    ) {
+                                        $vendorUser = $userResponse['data'];
+                                    }
+                                } catch (\Exception $userErr) {
+                                    Log::warning('Order details vendor user fallback failed', [
+                                        'order_id' => $id,
+                                        'shop_id' => $shopId,
+                                        'vendor_user_id' => $vendorUserId,
+                                        'error' => $userErr->getMessage(),
+                                    ]);
+                                }
+                            }
+
+                            $orderData['accepted_vendor'] = array_merge(
+                                is_array($acceptedVendor) ? $acceptedVendor : [],
+                                [
+                                    'type' => 'shop',
+                                    'shop_id' => $shop['id'] ?? $shopId,
+                                    'shop_name' => $shopName,
+                                    'user_id' => $vendorUser['id'] ?? ($vendorUserId ?? 'N/A'),
+                                    'user_name' => $vendorUser['name'] ?? 'N/A',
+                                    'user_mobile' => $vendorUser['mob_num'] ?? ($vendorUser['mobile'] ?? ($vendorUser['phone'] ?? ($shop['contact'] ?? ($shop['phone'] ?? 'N/A')))),
+                                    'user_email' => $vendorUser['email'] ?? 'N/A',
+                                    'user_type' => $vendorUser['user_type'] ?? 'N/A',
+                                    'app_version' => $vendorUser['app_version'] ?? 'N/A',
+                                    'shop_contact' => $shop['contact'] ?? ($shop['phone'] ?? 'N/A'),
+                                    'shop_address' => $shop['address'] ?? '',
+                                    'shop_place' => $shop['place'] ?? '',
+                                    'shop_state' => $shop['state'] ?? '',
+                                    'shop_pincode' => $shop['pincode'] ?? '',
+                                ]
+                            );
+                        }
+                    } catch (\Exception $shopErr) {
+                        Log::warning('Order details shop fallback failed', [
+                            'order_id' => $id,
+                            'shop_id' => $shopId,
+                            'error' => $shopErr->getMessage(),
+                        ]);
+                    }
+                }
+
+                // Delivery fallback: if accepted by delivery (delv_id/delv_boy_id) and accepted_vendor is missing/incomplete,
+                // enrich accepted_vendor from users/delivery_boy tables.
+                $deliveryId = $orderData['delv_id'] ?? ($orderData['delv_boy_id'] ?? null);
+                $needsDeliveryFallback = empty($shopId) && !empty($deliveryId) && (
+                    !is_array($acceptedVendor) ||
+                    (($acceptedVendor['type'] ?? null) !== 'delivery') ||
+                    (($acceptedVendor['user_name'] ?? 'N/A') === 'N/A')
+                );
+
+                if ($needsDeliveryFallback) {
+                    try {
+                        $deliveryUser = null;
+                        $deliveryProfile = null;
+
+                        try {
+                            $userResponse = $this->nodeApi->get('/get_user_by_id/' . $deliveryId . '/users', [], 30);
+                            if (
+                                isset($userResponse['status']) &&
+                                $userResponse['status'] === 'success' &&
+                                isset($userResponse['data']) &&
+                                is_array($userResponse['data'])
+                            ) {
+                                $deliveryUser = $userResponse['data'];
+                            }
+                        } catch (\Exception $userErr) {
+                            Log::warning('Order details delivery user fallback failed', [
+                                'order_id' => $id,
+                                'delivery_id' => $deliveryId,
+                                'error' => $userErr->getMessage(),
+                            ]);
+                        }
+
+                        try {
+                            $deliveryResponse = $this->nodeApi->get('/get_user_by_id/' . $deliveryId . '/delivery_boy', [], 30);
+                            if (
+                                isset($deliveryResponse['status']) &&
+                                $deliveryResponse['status'] === 'success' &&
+                                isset($deliveryResponse['data']) &&
+                                is_array($deliveryResponse['data'])
+                            ) {
+                                $deliveryProfile = $deliveryResponse['data'];
+                            }
+                        } catch (\Exception $deliveryErr) {
+                            Log::warning('Order details delivery profile fallback failed', [
+                                'order_id' => $id,
+                                'delivery_id' => $deliveryId,
+                                'error' => $deliveryErr->getMessage(),
+                            ]);
+                        }
+
+                        $orderData['accepted_vendor'] = array_merge(
+                            is_array($acceptedVendor) ? $acceptedVendor : [],
+                            [
+                                'type' => 'delivery',
+                                'user_id' => $deliveryUser['id'] ?? ($deliveryProfile['user_id'] ?? $deliveryId),
+                                'user_name' => $deliveryProfile['name'] ?? ($deliveryUser['name'] ?? 'N/A'),
+                                'user_mobile' => $deliveryProfile['contact'] ?? ($deliveryUser['mob_num'] ?? ($deliveryUser['mobile'] ?? ($deliveryUser['phone'] ?? 'N/A'))),
+                                'user_email' => $deliveryUser['email'] ?? 'N/A',
+                                'user_type' => $deliveryUser['user_type'] ?? 'N/A',
+                                'app_version' => $deliveryUser['app_version'] ?? 'N/A',
+                            ]
+                        );
+                    } catch (\Exception $deliveryFallbackErr) {
+                        Log::warning('Order details delivery fallback failed', [
+                            'order_id' => $id,
+                            'delivery_id' => $deliveryId,
+                            'error' => $deliveryFallbackErr->getMessage(),
+                        ]);
+                    }
+                }
+
                 return response()->json([
                     'status' => 'success',
                     'msg' => 'Order details retrieved',
-                    'data' => $apiResponse['data']
+                    'data' => $orderData
                 ]);
             }
             
@@ -598,13 +752,21 @@ class DashboardController extends Controller
             $status = $this->getStatusLabel($orderObj->status ?? 0);
             $orderId = $orderObj->id ?? 'N/A';
 
+            $displayShopId = $orderObj->shop_id ?? null;
+            if (($displayShopId === null || $displayShopId === '' || $displayShopId === 'N/A') && !empty($orderObj->delv_id)) {
+                $displayShopId = $orderObj->delv_id;
+            }
+            if (($displayShopId === null || $displayShopId === '' || $displayShopId === 'N/A') && !empty($orderObj->delv_boy_id)) {
+                $displayShopId = $orderObj->delv_boy_id;
+            }
+
             return [
                 'DT_RowIndex' => $rowIndex,
                 'id' => $orderId,
                 'zone' => $orderObj->customer_zone ?? 'N/A',
                 'order_number' => $orderObj->order_no ?? $orderObj->order_number ?? 'N/A',
                 'customer_id' => $orderObj->customer_id ?? 'N/A',
-                'shop_id' => $orderObj->shop_id ?? 'N/A',
+                'shop_id' => $displayShopId ?? 'N/A',
                 'status' => $status,
                 'status_badge' => '<span class="badge badge-' . $this->getStatusColor($orderObj->status ?? 0) . '">' . $status . '</span>',
                 'amount' => '₹' . number_format((float) $amount, 2),
